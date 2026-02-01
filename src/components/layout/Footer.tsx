@@ -9,10 +9,11 @@ const Footer = () => {
           {/* Brand */}
           <div className="space-y-4">
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-                <Building2 className="h-6 w-6 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold">ConstruLink</span>
+              <img
+                src="/SO_Logo_Vertical.png"
+                alt="Segunda Opinião"
+                className="h-25 w-auto"
+              />
             </Link>
             <p className="text-background/70 text-sm leading-relaxed">
               Conectando clientes e profissionais da construção civil, arquitetura e marcenaria.
@@ -58,7 +59,7 @@ const Footer = () => {
             <ul className="space-y-3 text-sm text-background/70">
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-secondary" />
-                contato@construlink.com.br
+                contato@segundaopiniao.com.br
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-secondary" />
@@ -73,7 +74,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-background/10 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/60">
-          <p>&copy; {new Date().getFullYear()} ConstruLink. Todos os direitos reservados.</p>
+          <p>&copy; {new Date().getFullYear()} Segunda Opinião. Todos os direitos reservados.</p>
           <div className="flex gap-6">
             <a href="#" className="hover:text-background transition-colors">Termos de Uso</a>
             <a href="#" className="hover:text-background transition-colors">Privacidade</a>

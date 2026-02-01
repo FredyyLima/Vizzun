@@ -2,11 +2,64 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { toast } from "@/components/ui/sonner";
 import { Mail, Lock, ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Email invalido."),
+  password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres."),
+});
+
+type LoginValues = z.infer<typeof loginSchema>;
 
 const Login = () => {
+  const navigate = useNavigate();
+  const form = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+    mode: "onBlur",
+  });
+
+  const onSubmit = async (values: LoginValues) => {
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        if (result?.errors?.fieldErrors) {
+          Object.entries(result.errors.fieldErrors).forEach(([field, messages]) => {
+            const message = Array.isArray(messages) ? messages[0] : undefined;
+            if (message) {
+              form.setError(field as keyof LoginValues, { message });
+            }
+          });
+        }
+        toast.error(result?.message ?? "Nao foi possivel entrar.");
+        return;
+      }
+
+      localStorage.setItem("auth_user", JSON.stringify(result));
+      window.dispatchEvent(new Event("auth:changed"));
+      toast.success("Login realizado com sucesso!");
+      navigate("/dashboard-usuario");
+    } catch (error) {
+      toast.error("Nao foi possivel conectar ao servidor.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -19,9 +72,8 @@ const Login = () => {
             </div>
 
             <div className="bg-card rounded-2xl border border-border shadow-card p-6 md:p-8">
-              {/* Social Login */}
               <div className="space-y-3 mb-6">
-                <Button variant="outline" className="w-full h-12 justify-center gap-3">
+                <Button variant="outline" className="w-full h-12 justify-center gap-3" type="button">
                   <svg className="h-5 w-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -30,7 +82,7 @@ const Login = () => {
                   </svg>
                   Entrar com Google
                 </Button>
-                <Button variant="outline" className="w-full h-12 justify-center gap-3">
+                <Button variant="outline" className="w-full h-12 justify-center gap-3" type="button">
                   <svg className="h-5 w-5" fill="#1877F2" viewBox="0 0 24 24">
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                   </svg>
@@ -47,37 +99,57 @@ const Login = () => {
                 </div>
               </div>
 
-              <form className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input id="email" type="email" placeholder="seu@email.com" className="pl-10 h-12" />
-                  </div>
-                </div>
+              <Form {...form}>
+                <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} type="email" placeholder="seu@email.com" className="pl-10 h-12" />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="senha">Senha</Label>
-                    <a href="#" className="text-sm text-primary hover:underline">
-                      Esqueceu a senha?
-                    </a>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input id="senha" type="password" placeholder="Sua senha" className="pl-10 h-12" />
-                  </div>
-                </div>
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-center justify-between">
+                          <FormLabel>Senha</FormLabel>
+                          <a href="#" className="text-sm text-primary hover:underline">
+                            Esqueceu a senha?
+                          </a>
+                        </div>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} type="password" placeholder="Sua senha" className="pl-10 h-12" />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <Button variant="hero" size="lg" className="w-full">
-                  Entrar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </form>
+                  <Button variant="hero" size="lg" className="w-full" disabled={form.formState.isSubmitting}>
+                    Entrar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </form>
+              </Form>
             </div>
 
             <p className="text-center mt-6 text-muted-foreground">
-              Não tem uma conta?{" "}
+              Nao tem uma conta?{" "}
               <Link to="/cadastro" className="text-primary font-medium hover:underline">
                 Cadastre-se
               </Link>

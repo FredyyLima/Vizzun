@@ -1,4 +1,4 @@
-import { ChevronDown, MapPin, Filter, X } from "lucide-react";
+﻿import { ChevronDown, MapPin, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
@@ -6,34 +6,69 @@ import { useState } from "react";
 interface FilterSidebarProps {
   onClose?: () => void;
   isMobile?: boolean;
+  selectedServices: string[];
+  selectedState: string;
+  onServicesChange: (next: string[]) => void;
+  onStateChange: (next: string) => void;
+  onClear: () => void;
 }
 
 const serviceTypes = [
-  { id: "construcao", label: "Construção Civil" },
+  { id: "construcao", label: "Construção" },
   { id: "arquitetura", label: "Arquitetura" },
   { id: "marcenaria", label: "Marcenaria" },
-  { id: "reforma", label: "Reformas" },
+  { id: "reforma", label: "Reforma" },
   { id: "paisagismo", label: "Paisagismo" },
   { id: "acabamentos", label: "Acabamentos" },
+  { id: "consultoria", label: "Consultoria" },
 ];
 
 const states = [
-  "São Paulo",
-  "Rio de Janeiro",
-  "Minas Gerais",
-  "Bahia",
-  "Rio Grande do Sul",
-  "Paraná",
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
 ];
 
-const FilterSidebar = ({ onClose, isMobile = false }: FilterSidebarProps) => {
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [selectedState, setSelectedState] = useState("");
+const FilterSidebar = ({
+  onClose,
+  isMobile = false,
+  selectedServices,
+  selectedState,
+  onServicesChange,
+  onStateChange,
+  onClear,
+}: FilterSidebarProps) => {
   const [isStateOpen, setIsStateOpen] = useState(false);
 
-  const toggleService = (id: string) => {
-    setSelectedServices((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+  const toggleService = (label: string) => {
+    onServicesChange(
+      selectedServices.includes(label)
+        ? selectedServices.filter((s) => s !== label)
+        : [...selectedServices, label],
     );
   };
 
@@ -58,7 +93,7 @@ const FilterSidebar = ({ onClose, isMobile = false }: FilterSidebarProps) => {
           <MapPin className="inline h-4 w-4 mr-1" />
           Localização
         </label>
-        
+
         {/* State Dropdown */}
         <div className="relative">
           <button
@@ -68,16 +103,18 @@ const FilterSidebar = ({ onClose, isMobile = false }: FilterSidebarProps) => {
             <span className={selectedState ? "text-foreground" : "text-muted-foreground"}>
               {selectedState || "Selecione o estado"}
             </span>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isStateOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground transition-transform ${isStateOpen ? "rotate-180" : ""}`}
+            />
           </button>
-          
+
           {isStateOpen && (
-            <div className="absolute z-10 w-full mt-2 py-2 bg-popover border border-border rounded-lg shadow-lg">
+            <div className="absolute z-10 w-full mt-2 py-2 bg-popover border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
               {states.map((state) => (
                 <button
                   key={state}
                   onClick={() => {
-                    setSelectedState(state);
+                    onStateChange(state);
                     setIsStateOpen(false);
                   }}
                   className="w-full px-4 py-2 text-left text-sm hover:bg-muted transition-colors"
@@ -92,19 +129,14 @@ const FilterSidebar = ({ onClose, isMobile = false }: FilterSidebarProps) => {
 
       {/* Service Type Filter */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-foreground mb-3">
-          Tipo de Serviço
-        </label>
+        <label className="block text-sm font-medium text-foreground mb-3">Tipo de Serviço</label>
         <div className="space-y-3">
           {serviceTypes.map((service) => (
-            <label
-              key={service.id}
-              className="flex items-center gap-3 cursor-pointer group"
-            >
+            <label key={service.id} className="flex items-center gap-3 cursor-pointer group">
               <Checkbox
                 id={service.id}
-                checked={selectedServices.includes(service.id)}
-                onCheckedChange={() => toggleService(service.id)}
+                checked={selectedServices.includes(service.label)}
+                onCheckedChange={() => toggleService(service.label)}
                 className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
               />
               <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
@@ -120,8 +152,7 @@ const FilterSidebar = ({ onClose, isMobile = false }: FilterSidebarProps) => {
         variant="outline"
         className="w-full"
         onClick={() => {
-          setSelectedServices([]);
-          setSelectedState("");
+          onClear();
         }}
       >
         Limpar Filtros

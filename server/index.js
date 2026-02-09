@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
@@ -9,65 +9,17 @@ import { onlyDigits, isValidCNPJ, isValidCPF, isValidPhone } from "./validators.
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: "http://localhost:8080" }));
+const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8080")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: corsOrigins.length === 0 ? true : corsOrigins,
+  credentials: true,
+}));
 app.use(express.json({ limit: "10mb" }));
 
-const ensureSchema = async () => {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "User" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "role" TEXT NOT NULL,
-      "personType" TEXT NOT NULL,
-      "name" TEXT,
-      "birthDate" DATETIME,
-      "cpf" TEXT,
-      "rg" TEXT,
-      "cnpj" TEXT,
-      "companyName" TEXT,
-      "tradeName" TEXT,
-      "contactName" TEXT,
-      "contactEmail" TEXT,
-      "contactPhone" TEXT,
-      "contactCpf" TEXT,
-      "contactRg" TEXT,
-      "contactBirthDate" DATETIME,
-      "cnpjCard" TEXT,
-      "email" TEXT NOT NULL,
-      "phone" TEXT NOT NULL,
-      "services" TEXT,
-      "passwordHash" TEXT NOT NULL,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  const columns = await prisma.$queryRawUnsafe(`PRAGMA table_info("User");`);
-  const hasContactPhone = Array.isArray(columns) && columns.some((col) => col.name === "contactPhone");
-  if (!hasContactPhone) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "contactPhone" TEXT;`);
-  }
-  const hasContactCpf = Array.isArray(columns) && columns.some((col) => col.name === "contactCpf");
-  if (!hasContactCpf) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "contactCpf" TEXT;`);
-  }
-  const hasContactRg = Array.isArray(columns) && columns.some((col) => col.name === "contactRg");
-  if (!hasContactRg) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "contactRg" TEXT;`);
-  }
-  const hasContactBirthDate = Array.isArray(columns) && columns.some((col) => col.name === "contactBirthDate");
-  if (!hasContactBirthDate) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "contactBirthDate" DATETIME;`);
-  }
-  const hasCnpjCard = Array.isArray(columns) && columns.some((col) => col.name === "cnpjCard");
-  if (!hasCnpjCard) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "cnpjCard" TEXT;`);
-  }
-
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");`);
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "User_cpf_key" ON "User"("cpf");`);
-  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "User_cnpj_key" ON "User"("cnpj");`);
-  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "User_role_idx" ON "User"("role");`);
-};
 
 const isValidDate = (value) => {
   if (!value) return false;
@@ -482,9 +434,9 @@ app.put("/api/user/:id", async (req, res) => {
 const port = process.env.PORT ? Number(process.env.PORT) : 8081;
 
 try {
-  await ensureSchema();
+  await prisma.$connect();
 } catch (error) {
-  console.error("Erro ao preparar o banco de dados:", error);
+  console.error("Erro ao conectar no banco de dados:", error);
   process.exit(1);
 }
 
@@ -501,6 +453,4 @@ process.on("SIGTERM", async () => {
   await prisma.$disconnect();
   process.exit(0);
 });
-
-
 

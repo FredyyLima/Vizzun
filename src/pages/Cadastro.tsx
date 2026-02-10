@@ -23,6 +23,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isStrongPassword, isValidCNPJ, isValidCPF, isValidPhone } from "@/lib/validators";
+import { apiPath } from "@/lib/api";
 
 const services = [
   "Construção Civil",
@@ -263,7 +264,7 @@ const Cadastro = () => {
     };
 
     try {
-      const response = await fetch("/api/register", {
+      const response = await fetch(apiPath("/api/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

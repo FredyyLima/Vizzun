@@ -9,6 +9,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { apiPath } from "@/lib/api";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalido."),
@@ -30,7 +31,7 @@ const Login = () => {
 
   const onSubmit = async (values: LoginValues) => {
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch(apiPath("/api/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

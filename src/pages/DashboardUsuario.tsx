@@ -30,6 +30,7 @@ import {
 import { type ElementType, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
+import { apiPath } from "@/lib/api";
 
 type SectionKey = "chats" | "anunciar" | "anuncios" | "pending" | "contracts" | "profile" | "config";
 
@@ -632,7 +633,7 @@ const DashboardUsuario = () => {
     const loadProfile = async () => {
       setConfigLoading(true);
       try {
-        const response = await fetch(`/api/user/${authUser.id}`);
+        const response = await fetch(apiPath(`/api/user/${authUser.id}`));
         if (!response.ok) {
           throw new Error("Falha ao carregar dados do usuário.");
         }
@@ -981,7 +982,7 @@ const DashboardUsuario = () => {
 
     setConfigSaving(true);
     try {
-      const response = await fetch(`/api/user/${authUser.id}`, {
+      const response = await fetch(apiPath(`/api/user/${authUser.id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

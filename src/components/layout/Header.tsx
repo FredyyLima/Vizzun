@@ -1,4 +1,4 @@
-﻿import { Menu, User, X, LogOut } from "lucide-react";
+import { Menu, User, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
@@ -67,7 +67,7 @@ const Header = () => {
         <Link to="/" className="flex items-center">
           <img
             src="/SO_Logo_horizontal.png"
-            alt="Segunda Opiniao"
+            alt="Vizzun"
             className="h-24 w-auto"
           />
         </Link>

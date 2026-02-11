@@ -1,4 +1,4 @@
-﻿import Header from "@/components/layout/Header";
+import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import FilterSidebar from "@/components/filters/FilterSidebar";
 import ProjectCard from "@/components/cards/ProjectCard";
@@ -64,7 +64,7 @@ const mockProjects = [
   },
   {
     id: "5",
-    title: "Segunda Opinião - Orçamento de Obra",
+    title: "Vizzun - Orçamento de Obra",
     summary: "Recebi um orçamento de R$200mil para construção de sobrado 180m². Gostaria de uma segunda opinião profissional antes de fechar.",
     location: "Curitiba, PR",
     budget: "R$ 500 - R$ 1.500",

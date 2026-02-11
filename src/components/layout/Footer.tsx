@@ -10,8 +10,8 @@ const Footer = () => {
           <div className="space-y-4">
             <Link to="/" className="flex items-center gap-2">
               <img
-                src="/SO_Logo_Vertical.png"
-                alt="Segunda Opinião"
+                src="/vizzun_com_fundo.png"
+                alt="Vizzun"
                 className="h-25 w-auto"
               />
             </Link>
@@ -74,7 +74,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-background/10 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/60">
-          <p>&copy; {new Date().getFullYear()} Segunda Opinião. Todos os direitos reservados.</p>
+          <p>&copy; {new Date().getFullYear()} Vizzun. Todos os direitos reservados.</p>
           <div className="flex gap-6">
             <a href="#" className="hover:text-background transition-colors">Termos de Uso</a>
             <a href="#" className="hover:text-background transition-colors">Privacidade</a>

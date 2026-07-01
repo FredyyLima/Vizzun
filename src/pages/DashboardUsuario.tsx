@@ -877,6 +877,24 @@ const DashboardUsuario = () => {
     }
   };
 
+  const handleConfigCnpjCardChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setConfigCnpjCard("");
+      setConfigCnpjCardName("");
+      return;
+    }
+    try {
+      const url = await uploadFile(file, file.name);
+      setConfigCnpjCard(url);
+      setConfigCnpjCardName(file.name);
+    } catch (error) {
+      console.error("Erro ao enviar cartao CNPJ:", error);
+      toast.error("Não foi possível enviar o cartão CNPJ.");
+      event.target.value = "";
+    }
+  };
+
   const handleSaveConfig = async () => {
     if (!authUser?.id || !configProfile) return;
     if (configPassword && configPassword !== configPasswordConfirm) {
@@ -2557,24 +2575,7 @@ const DashboardUsuario = () => {
 
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-foreground">Cartão CNPJ</label>
-                              <Input
-                                type="file"
-                                accept=".pdf,image/*"
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0];
-                                  if (!file) {
-                                    setConfigCnpjCard("");
-                                    setConfigCnpjCardName("");
-                                    return;
-                                  }
-                                  setConfigCnpjCardName(file.name);
-                                  const reader = new FileReader();
-                                  reader.onload = () => {
-                                    setConfigCnpjCard(String(reader.result ?? ""));
-                                  };
-                                  reader.readAsDataURL(file);
-                                }}
-                              />
+                              <Input type="file" accept=".pdf,image/*" onChange={handleConfigCnpjCardChange} />
                               <p className="text-xs text-muted-foreground">
                                 {configCnpjCardName
                                   ? `Arquivo: ${configCnpjCardName}`

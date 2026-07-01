@@ -8,7 +8,7 @@ import { z } from "zod";
 import { PrismaClient } from "@prisma/client";
 import { onlyDigits, isValidCNPJ, isValidCPF, isValidPhone } from "./validators.js";
 import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from "./auth.js";
-import { upload, uploadsDir } from "./uploads.js";
+import { saveDataUrlToUploads, upload, uploadsDir } from "./uploads.js";
 import { createAnnouncementsRouter } from "./announcements.js";
 import { createChatsRouter } from "./chats.js";
 import { createProfessionalChatsRouter } from "./professional-chats.js";
@@ -208,6 +208,15 @@ app.post("/api/register", registerLimiter, async (req, res) => {
   const contactCpf = data.contactCpf ? onlyDigits(data.contactCpf) : null;
   const contactBirthDate = data.contactBirthDate ? new Date(data.contactBirthDate) : null;
 
+  let cnpjCardUrl = null;
+  if (data.cnpjCard) {
+    try {
+      cnpjCardUrl = saveDataUrlToUploads(data.cnpjCard);
+    } catch (error) {
+      return res.status(400).json({ field: "cnpjCard", message: error.message });
+    }
+  }
+
   try {
     const existingEmail = await prisma.user.findUnique({ where: { email } });
     if (existingEmail) {
@@ -247,7 +256,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
         contactCpf,
         contactRg: data.contactRg?.trim() || null,
         contactBirthDate,
-        cnpjCard: data.cnpjCard ?? null,
+        cnpjCard: cnpjCardUrl,
         email,
         phone,
         services: data.services?.length ? JSON.stringify(data.services) : null,

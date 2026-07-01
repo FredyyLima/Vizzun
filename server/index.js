@@ -14,6 +14,7 @@ import { createAnnouncementsRouter } from "./announcements.js";
 import { createChatsRouter } from "./chats.js";
 import { createProfessionalChatsRouter } from "./professional-chats.js";
 import { createProfessionalsRouter } from "./professionals.js";
+import { pathToFileURL } from "url";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -502,24 +503,30 @@ app.put("/api/me", requireAuth, async (req, res) => {
 
 const port = process.env.PORT ? Number(process.env.PORT) : 8081;
 
-try {
-  await prisma.$connect();
-} catch (error) {
-  console.error("Erro ao conectar no banco de dados:", error);
-  process.exit(1);
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMain) {
+  try {
+    await prisma.$connect();
+  } catch (error) {
+    console.error("Erro ao conectar no banco de dados:", error);
+    process.exit(1);
+  }
+
+  app.listen(port, () => {
+    console.log(`API rodando em http://localhost:${port}`);
+  });
+
+  process.on("SIGINT", async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
 }
 
-app.listen(port, () => {
-  console.log(`API rodando em http://localhost:${port}`);
-});
-
-process.on("SIGINT", async () => {
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  await prisma.$disconnect();
-  process.exit(0);
-});
+export { app, prisma };
 

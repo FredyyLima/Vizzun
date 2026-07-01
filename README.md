@@ -1,73 +1,122 @@
-# Welcome to your Lovable project
+# Vizzun
 
-## Project info
+Marketplace de segunda opinião de orçamentos: clientes publicam projetos de reforma, arquitetura,
+marcenaria e outros serviços de construção, negociam com profissionais pelo chat integrado da
+plataforma e fecham negócio com um fluxo de confirmação em duas etapas.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Stack
 
-## How can I edit this code?
+- **Frontend**: React 18 + TypeScript + Vite + shadcn/ui + Tailwind CSS, TanStack Query para
+  data-fetching, React Router, react-hook-form + zod para formulários.
+- **Backend**: Node.js + Express 5, Prisma 6 + PostgreSQL, autenticação via JWT em cookie
+  HttpOnly, bcryptjs para hash de senha, multer para upload de arquivos.
+- **Testes**: Vitest + Testing Library (frontend) e Vitest + Supertest (rotas da API).
 
-There are several ways of editing your application.
+## Requisitos
 
-**Use Lovable**
+- Node.js 22.x
+- PostgreSQL 14+ (local ou remoto)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Configuração local
 
-Changes made via Lovable will be committed automatically to this repo.
+1. Instale as dependências:
 
-**Use your preferred IDE**
+   ```sh
+   npm install
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+2. Copie o arquivo de variáveis de ambiente e preencha os valores:
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+   ```sh
+   cp .env.example .env
+   ```
 
-Follow these steps:
+   | Variável | Descrição |
+   |---|---|
+   | `DATABASE_URL` | String de conexão do PostgreSQL (`postgresql://usuario:senha@host:porta/banco?schema=public`) |
+   | `CORS_ORIGIN` | Origem(ns) permitida(s) para o frontend acessar a API, separadas por vírgula |
+   | `PORT` | Porta em que a API Express escuta (padrão `8081`) |
+   | `VITE_API_BASE_URL` | URL base da API usada pelo frontend. Deixe vazio em dev (usa o proxy do Vite para `localhost:8081`) |
+   | `JWT_SECRET` | Segredo usado para assinar o token de sessão. Gere um valor único por ambiente: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+
+3. Aplique as migrations do Prisma no banco configurado em `DATABASE_URL`:
+
+   ```sh
+   npx prisma migrate deploy
+   ```
+
+4. Rode o backend e o frontend em dois terminais separados:
+
+   ```sh
+   npm run dev:server   # API Express em http://localhost:8081
+   npm run dev           # Frontend Vite em http://localhost:8080
+   ```
+
+   O Vite já está configurado para fazer proxy de `/api` para `http://localhost:8081` em
+   desenvolvimento (ver `vite.config.ts`), então não é necessário configurar `VITE_API_BASE_URL`
+   localmente.
+
+## Scripts disponíveis
+
+| Script | Descrição |
+|---|---|
+| `npm run dev` | Sobe o frontend em modo desenvolvimento (Vite) |
+| `npm run dev:server` | Sobe a API Express localmente |
+| `npm run build` | Gera o build de produção do frontend em `dist/` |
+| `npm run preview` | Serve o build de produção localmente para validação |
+| `npm run lint` | Roda o ESLint |
+| `npm test` | Roda a suíte de testes (Vitest) uma vez |
+| `npm run test:watch` | Roda a suíte de testes em modo watch |
+| `npm run db:push` | Sincroniza o schema do Prisma com o banco sem gerar migration (uso pontual em dev) |
+| `npm run db:deploy` | Aplica as migrations pendentes (`prisma migrate deploy`) |
+| `npm run db:studio` | Abre o Prisma Studio para inspecionar o banco |
+| `npm start` | Fluxo completo de deploy: normaliza migrations, gera o client, aplica migrations e sobe a API (ver `start:server:deploy`) |
+
+## Testes
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm test
 ```
 
-**Edit a file directly in GitHub**
+Os testes de rotas de autenticação (`server/__tests__/`) rodam contra um banco PostgreSQL real —
+aponte `DATABASE_URL` para um banco de desenvolvimento/teste antes de rodar (nunca aponte para um
+banco de produção, os testes criam e removem usuários). Os testes de componentes React
+(`src/**/*.test.tsx`) usam jsdom e não precisam de banco.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Estrutura do projeto
 
-**Use GitHub Codespaces**
+```
+server/              API Express (rotas, autenticação, upload, integração com Prisma)
+  __tests__/          Testes de integração das rotas
+prisma/
+  schema.prisma        Modelo de dados
+  migrations/           Migrations versionadas
+src/
+  pages/               Páginas (rotas do React Router)
+  components/          Componentes de UI reutilizáveis e específicos de features
+  components/dashboard/ Seções da área logada (anúncios, chats, perfil, configurações)
+  hooks/               Hooks de estado/dados (auth, dashboard, etc.)
+  lib/                 Tipos, formatadores e utilitários compartilhados
+uploads/               Arquivos enviados pelos usuários (avatar, anexos de chat, cartão CNPJ) — não versionado
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deploy
 
-## What technologies are used for this project?
+A imagem de produção é definida em `Dockerfile` e usa `npm start`
+(`start:server:deploy`), que executa, nesta ordem:
 
-This project is built with:
+1. Normaliza o histórico de migrations (`scripts/normalize-migrations.cjs`) — necessário apenas
+   para compatibilizar bancos que já existiam antes da adoção do Prisma Migrate.
+2. `prisma generate` — gera o client do Prisma.
+3. `prisma migrate deploy` — aplica migrations pendentes de forma segura e idempotente (não
+   recria dados existentes; se uma migration já foi marcada como aplicada, ela é ignorada).
+4. Inicia a API Express, que também serve os arquivos estáticos gerados pelo build do frontend.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Antes de subir em produção:
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Defina todas as variáveis de `.env.example` no ambiente de destino (nunca copie o `.env` de
+  desenvolvimento).
+- Gere um `JWT_SECRET` novo e exclusivo do ambiente de produção.
+- Rode `npm run build` para gerar `dist/` (ou deixe o pipeline de deploy fazer isso).
+- Garanta que o volume/diretório `uploads/` seja persistente entre deploys, já que arquivos
+  enviados pelos usuários são salvos em disco local pela API.

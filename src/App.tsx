@@ -15,6 +15,8 @@ import Chat from "./pages/Chat";
 import ChatProfissional from "./pages/ChatProfissional";
 import Cadastro from "./pages/Cadastro";
 import Login from "./pages/Login";
+import EsqueciSenha from "./pages/EsqueciSenha";
+import RedefinirSenha from "./pages/RedefinirSenha";
 import ComoFunciona from "./pages/ComoFunciona";
 import NotFound from "./pages/NotFound";
 import DashboardUsuario from "./pages/DashboardUsuario";
@@ -42,6 +44,8 @@ const App = () => (
               <Route path="/chat-profissional/:id" element={<ChatProfissional />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+              <Route path="/redefinir-senha" element={<RedefinirSenha />} />
               <Route path="/dashboard-usuario" element={<DashboardUsuario />} />
               <Route path="/como-funciona" element={<ComoFunciona />} />
               <Route path="/termos-de-uso" element={<TermosDeUso />} />

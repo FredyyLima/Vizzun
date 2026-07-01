@@ -50,6 +50,8 @@ model User {
   phone            String
   services         String?
   passwordHash     String
+  passwordResetTokenHash  String?   @unique
+  passwordResetExpiresAt DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 

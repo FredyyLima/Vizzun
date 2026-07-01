@@ -15,6 +15,7 @@ import { createChatsRouter } from "./chats.js";
 import { createProfessionalChatsRouter } from "./professional-chats.js";
 import { createProfessionalsRouter } from "./professionals.js";
 import { pathToFileURL } from "url";
+import crypto from "crypto";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -60,6 +61,14 @@ const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Muitas tentativas de cadastro. Tente novamente mais tarde." },
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Muitas solicitacoes de recuperacao de senha. Tente novamente mais tarde." },
 });
 
 const isValidDate = (value) => {
@@ -328,6 +337,103 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 app.post("/api/logout", (_req, res) => {
   clearAuthCookie(res);
   return res.json({ ok: true });
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+app.post("/api/forgot-password", forgotPasswordLimiter, async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Informe um email valido." });
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const genericMessage = "Se este email estiver cadastrado, voce recebera instrucoes para redefinir a senha.";
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Resposta identica exista ou nao o usuario, para nao permitir enumeracao de emails cadastrados.
+    if (!user) {
+      return res.json({ message: genericMessage });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const frontendOrigin = corsOrigins[0] ?? "http://localhost:8080";
+    const resetUrl = `${frontendOrigin}/redefinir-senha?token=${rawToken}`;
+
+    // STUB DE DESENVOLVIMENTO: ainda nao ha provedor de email configurado (item 18 do plano).
+    // Por enquanto o link de redefinicao e apenas logado no servidor e, fora de producao,
+    // devolvido na resposta da API para viabilizar o fluxo end-to-end. Antes de usar em
+    // producao de verdade, substituir por envio real de email (Resend, SMTP, etc.) e
+    // remover o campo resetUrl da resposta.
+    console.log(`[STUB email] Link de redefinicao de senha para ${email}: ${resetUrl}`);
+
+    const responseBody = { message: genericMessage };
+    if (process.env.NODE_ENV !== "production") {
+      responseBody.resetUrl = resetUrl;
+    }
+
+    return res.json(responseBody);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Nao foi possivel processar a solicitacao." });
+  }
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z
+    .string()
+    .min(8)
+    .refine((value) => /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(value), {
+      message: "A senha deve ter letras e numeros.",
+    }),
+});
+
+app.post("/api/reset-password", async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados invalidos.", errors: parsed.error.flatten() });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(parsed.data.token).digest("hex");
+
+  try {
+    const user = await prisma.user.findUnique({ where: { passwordResetTokenHash: tokenHash } });
+    if (!user || !user.passwordResetExpiresAt || user.passwordResetExpiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ message: "Link invalido ou expirado." });
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Nao foi possivel redefinir a senha." });
+  }
 });
 
 const updateSchema = z

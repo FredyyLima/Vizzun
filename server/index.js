@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
@@ -16,6 +17,16 @@ import { createProfessionalsRouter } from "./professionals.js";
 
 const app = express();
 const prisma = new PrismaClient();
+
+// crossOriginResourcePolicy: "cross-origin" porque /uploads (imagens de
+// anuncio, avatar, anexos de chat, cartao CNPJ) precisa poder ser
+// carregado pelo frontend mesmo se um dia front e back nao ficarem no
+// mesmo dominio - o resto dos defaults do helmet fica ativo.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 
 const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8080")
   .split(",")

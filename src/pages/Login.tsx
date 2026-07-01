@@ -11,6 +11,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiPath } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import SeoHead from "@/components/SeoHead";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalido."),
@@ -65,6 +66,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead title="Entrar" description="Acesse sua conta na Vizzun." />
       <Header />
       <main className="flex-1 flex items-center justify-center py-12">
         <div className="container mx-auto px-4">

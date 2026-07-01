@@ -19,6 +19,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { apiPath } from "@/lib/api";
+import SeoHead from "@/components/SeoHead";
 
 const mockProjects = [
   {
@@ -217,6 +218,10 @@ const Projetos = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead
+        title="Projetos Disponíveis"
+        description="Encontre projetos que precisam de orçamentos e ofereça seus serviços como profissional."
+      />
       <Header />
       <main className="flex-1">
         {/* Page Header */}

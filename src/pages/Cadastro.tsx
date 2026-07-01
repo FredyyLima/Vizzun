@@ -25,6 +25,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { isStrongPassword, isValidCNPJ, isValidCPF, isValidPhone } from "@/lib/validators";
 import { apiPath } from "@/lib/api";
 import { Link } from "react-router-dom";
+import SeoHead from "@/components/SeoHead";
 
 const services = [
   "Construção Civil",
@@ -305,6 +306,7 @@ const Cadastro = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead title="Criar conta" description="Crie sua conta na Vizzun para publicar projetos ou oferecer seus serviços como profissional." />
       <Header />
       <main className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-4">

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/use-auth";
 import Login from "./Login";
 
@@ -14,11 +15,13 @@ beforeEach(() => {
 
 const renderLogin = () =>
   render(
-    <MemoryRouter>
-      <AuthProvider>
-        <Login />
-      </AuthProvider>
-    </MemoryRouter>,
+    <HelmetProvider>
+      <MemoryRouter>
+        <AuthProvider>
+          <Login />
+        </AuthProvider>
+      </MemoryRouter>
+    </HelmetProvider>,
   );
 
 describe("Login page", () => {

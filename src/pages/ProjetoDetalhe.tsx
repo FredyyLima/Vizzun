@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { useAuth } from "@/hooks/use-auth";
 import { apiPath } from "@/lib/api";
+import SeoHead from "@/components/SeoHead";
 
 const projectImages = [
   "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&h=600&fit=crop",
@@ -286,6 +287,10 @@ const ProjetoDetalhe = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead
+        title={`${detail.title} — ${detail.category}`}
+        description={detail.description[0] ?? `Confira este projeto de ${detail.category} publicado na Vizzun.`}
+      />
       <Header />
       <main className="flex-1">
         {/* Breadcrumb */}

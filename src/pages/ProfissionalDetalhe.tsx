@@ -7,6 +7,7 @@ import { Star, MapPin, CheckCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { apiPath } from "@/lib/api";
+import SeoHead from "@/components/SeoHead";
 
 type StoredProfile = {
   id: string;
@@ -62,6 +63,7 @@ const ProfissionalDetalhe = () => {
   if (!profile) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
+        <SeoHead title="Profissional não encontrado" description="Não localizamos este perfil de profissional." />
         <Header />
         <main className="flex-1 flex items-center justify-center px-4 py-12">
           <Card className="max-w-md w-full">
@@ -85,6 +87,10 @@ const ProfissionalDetalhe = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead
+        title={`${profile.name} — ${profile.specialty}`}
+        description={profile.bio || `Confira o perfil de ${profile.name}, especialista em ${profile.specialty}.`}
+      />
       <Header />
       <main className="flex-1">
         <div className="bg-muted/30 border-b border-border">

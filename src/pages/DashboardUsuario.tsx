@@ -27,6 +27,7 @@ import ContractsSection from "@/components/dashboard/ContractsSection";
 import ChatSection from "@/components/dashboard/ChatSection";
 import ProfessionalProfileSection from "@/components/dashboard/ProfessionalProfileSection";
 import ConfigSection from "@/components/dashboard/ConfigSection";
+import SeoHead from "@/components/SeoHead";
 import type { SectionKey } from "@/lib/dashboard-types";
 
 const navItems: { key: SectionKey; label: string; icon: ElementType }[] = [
@@ -90,6 +91,7 @@ const DashboardUsuario = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead title="Minha conta" description="Gerencie seus anúncios, chats, contratos e dados cadastrais na Vizzun." />
       <Header />
       <main className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-4">

@@ -16,6 +16,7 @@ import { SlidersHorizontal, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiPath } from "@/lib/api";
+import SeoHead from "@/components/SeoHead";
 
 type StoredProfile = {
   id: string;
@@ -127,6 +128,10 @@ const Profissionais = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead
+        title="Encontre Profissionais"
+        description="Explore profissionais qualificados em construção, arquitetura e marcenaria e receba propostas para seu projeto."
+      />
       <Header />
       <main className="flex-1">
         {/* Page Header */}

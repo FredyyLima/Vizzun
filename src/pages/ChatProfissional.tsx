@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { apiPath } from "@/lib/api";
+import SeoHead from "@/components/SeoHead";
 
 type ApiMessage = {
   id: string;
@@ -267,6 +268,7 @@ const ChatProfissional = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      <SeoHead title="Chat com profissional" description="Converse com o profissional na Vizzun." />
       <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link

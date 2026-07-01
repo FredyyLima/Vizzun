@@ -4,6 +4,7 @@ import HowItWorksSection from "@/components/home/HowItWorksSection";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Users, Shield, Zap, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import SeoHead from "@/components/SeoHead";
 
 const benefits = [
   {
@@ -45,6 +46,10 @@ const faqItems = [
 const ComoFunciona = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <SeoHead
+        title="Como Funciona"
+        description="Entenda como publicar projetos, receber propostas e negociar com profissionais na Vizzun."
+      />
       <Header />
       <main className="flex-1">
         {/* Hero */}

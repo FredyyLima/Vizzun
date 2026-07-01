@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import SeoHead from "@/components/SeoHead";
 
 type ApiMessage = {
   id: string;
@@ -306,6 +307,7 @@ const Chat = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      <SeoHead title="Chat do projeto" description="Converse com o interessado no seu projeto na Vizzun." />
       {/* Chat Header */}
       <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">

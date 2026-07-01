@@ -24,6 +24,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isStrongPassword, isValidCNPJ, isValidCPF, isValidPhone } from "@/lib/validators";
 import { apiPath } from "@/lib/api";
+import { Link } from "react-router-dom";
 
 const services = [
   "Construção Civil",
@@ -504,13 +505,23 @@ const Cadastro = () => {
                             <div className="space-y-1 leading-none">
                               <FormLabel className="text-sm text-muted-foreground">
                                 Li e aceito os{" "}
-                                <a href="#" className="text-primary hover:underline">
+                                <Link
+                                  to="/termos-de-uso"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
                                   Termos de Uso
-                                </a>{" "}
+                                </Link>{" "}
                                 e{" "}
-                                <a href="#" className="text-primary hover:underline">
+                                <Link
+                                  to="/politica-de-privacidade"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
                                   Política de Privacidade
-                                </a>
+                                </Link>
                               </FormLabel>
                               <FormMessage />
                             </div>
@@ -938,13 +949,23 @@ const Cadastro = () => {
                             <div className="space-y-1 leading-none">
                               <FormLabel className="text-sm text-muted-foreground">
                                 Li e aceito os{" "}
-                                <a href="#" className="text-primary hover:underline">
+                                <Link
+                                  to="/termos-de-uso"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
                                   Termos de Uso
-                                </a>{" "}
+                                </Link>{" "}
                                 e{" "}
-                                <a href="#" className="text-primary hover:underline">
+                                <Link
+                                  to="/politica-de-privacidade"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
                                   Política de Privacidade
-                                </a>
+                                </Link>
                               </FormLabel>
                               <FormMessage />
                             </div>

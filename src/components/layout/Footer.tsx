@@ -76,8 +76,8 @@ const Footer = () => {
         <div className="border-t border-background/10 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/60">
           <p>&copy; {new Date().getFullYear()} Vizzun. Todos os direitos reservados.</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-background transition-colors">Termos de Uso</a>
-            <a href="#" className="hover:text-background transition-colors">Privacidade</a>
+            <Link to="/termos-de-uso" className="hover:text-background transition-colors">Termos de Uso</Link>
+            <Link to="/politica-de-privacidade" className="hover:text-background transition-colors">Privacidade</Link>
           </div>
         </div>
       </div>

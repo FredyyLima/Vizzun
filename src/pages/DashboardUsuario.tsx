@@ -32,6 +32,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { apiPath } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 type SectionKey = "chats" | "anunciar" | "anuncios" | "pending" | "contracts" | "profile" | "config";
 
@@ -76,6 +77,8 @@ type StoredChat = {
   closePendingFrom?: string | null;
   contractStatus?: "pending" | "accepted" | "rejected";
   createdAt?: string;
+  ownerLastReadAt?: string | null;
+  participantLastReadAt?: string | null;
   messages: ChatMessage[];
 };
 
@@ -198,22 +201,9 @@ const brazilStates = [
   "TO",
 ];
 
-const chatStorageKey = "site_chats";
 const profileStorageKey = "professional_profiles";
 const professionalChatStorageKey = "professional_chats";
-const chatReadStorageKey = "chat_reads";
 const professionalChatReadStorageKey = "professional_chat_reads";
-
-const loadStoredChats = () => {
-  if (typeof window === "undefined") return [] as StoredChat[];
-  const raw = localStorage.getItem(chatStorageKey);
-  if (!raw) return [] as StoredChat[];
-  try {
-    return JSON.parse(raw) as StoredChat[];
-  } catch {
-    return [] as StoredChat[];
-  }
-};
 
 const loadStoredProfiles = () => {
   if (typeof window === "undefined") return [] as ProfessionalProfile[];
@@ -394,11 +384,9 @@ const DashboardUsuario = () => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeChatSource, setActiveChatSource] = useState<"project" | "professional">("project");
   const [draftMessage, setDraftMessage] = useState("");
-  const [storedChats, setStoredChats] = useState<StoredChat[]>(() => loadStoredChats());
   const [storedProfessionalChats, setStoredProfessionalChats] = useState<StoredProfessionalChat[]>(() =>
     loadStoredProfessionalChats(),
   );
-  const [chatReadMap, setChatReadMap] = useState<Record<string, string>>({});
   const [professionalReadMap, setProfessionalReadMap] = useState<Record<string, string>>({});
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [titleValue, setTitleValue] = useState("");
@@ -460,6 +448,7 @@ const DashboardUsuario = () => {
   const announcementFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { user: authUser, loading: authLoading, refresh: refreshAuth } = useAuth();
+  const queryClient = useQueryClient();
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -535,32 +524,39 @@ const DashboardUsuario = () => {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const reload = () => {
-      setChatReadMap(loadReadMap(chatReadStorageKey, ownerId));
       setProfessionalReadMap(loadReadMap(professionalChatReadStorageKey, ownerId));
     };
     reload();
     window.addEventListener("storage", reload);
-    window.addEventListener("chat-reads:changed", reload as EventListener);
     window.addEventListener("professional-reads:changed", reload as EventListener);
     return () => {
       window.removeEventListener("storage", reload);
-      window.removeEventListener("chat-reads:changed", reload as EventListener);
       window.removeEventListener("professional-reads:changed", reload as EventListener);
     };
   }, [ownerId]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => {
-      setStoredChats(loadStoredChats());
-    };
-    window.addEventListener("storage", reload);
-    window.addEventListener("chats:changed", reload as EventListener);
-    return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("chats:changed", reload as EventListener);
-    };
-  }, []);
+  const { data: storedChats = [] } = useQuery({
+    queryKey: ["chats"],
+    queryFn: async () => {
+      const response = await fetch(apiPath("/api/chats"), { credentials: "include" });
+      if (!response.ok) return [] as StoredChat[];
+      return (await response.json()) as StoredChat[];
+    },
+    enabled: Boolean(authUser?.id),
+    refetchInterval: 4000,
+  });
+
+  const refetchChats = () => queryClient.invalidateQueries({ queryKey: ["chats"] });
+
+  const chatReadMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    storedChats.forEach((chat) => {
+      const isOwnerOfChat = chat.ownerId === ownerId;
+      const readAt = isOwnerOfChat ? chat.ownerLastReadAt : chat.participantLastReadAt;
+      if (readAt) map[chat.id] = readAt;
+    });
+    return map;
+  }, [storedChats, ownerId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -818,25 +814,28 @@ const DashboardUsuario = () => {
     });
   };
 
-  const appendMessagesToChat = (chatId: string, newMessages: ChatMessage[]) => {
+  const appendMessagesToChat = async (chatId: string, newMessages: ChatMessage[]) => {
     if (!chatId) return;
-    setStoredChats((prev) => {
-      const next = prev.map((chat) => {
-        if (chat.id !== chatId) return chat;
-        return {
-          ...chat,
-          messages: [...(chat.messages ?? []), ...newMessages],
-        };
-      });
-      try {
-        localStorage.setItem(chatStorageKey, JSON.stringify(next));
-        window.dispatchEvent(new Event("chats:changed"));
-      } catch (error) {
-        console.error("Erro ao salvar chats no armazenamento local:", error);
-        toast.error("Não foi possível salvar o chat no armazenamento local.");
+    try {
+      for (const message of newMessages) {
+        await fetch(apiPath(`/api/chats/${chatId}/messages`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            text: message.text,
+            kind: message.kind ?? "text",
+            fileName: message.fileName,
+            fileUrl: message.fileUrl,
+            fileType: message.fileType,
+          }),
+        });
       }
-      return next;
-    });
+      refetchChats();
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+      toast.error("Não foi possível enviar a mensagem.");
+    }
   };
 
   const appendMessagesToProfessionalChat = (chatId: string, newMessages: ChatMessage[]) => {
@@ -860,32 +859,18 @@ const DashboardUsuario = () => {
     });
   };
 
-  const updateStoredChats = (nextChats: StoredChat[]) => {
-    setStoredChats(nextChats);
-    try {
-      localStorage.setItem(chatStorageKey, JSON.stringify(nextChats));
-      window.dispatchEvent(new Event("chats:changed"));
-    } catch (error) {
-      console.error("Erro ao salvar chats no armazenamento local:", error);
-      toast.error("Não foi possível salvar os chats.");
+  const postChatAction = async (chatId: string, path: string, body: Record<string, unknown>) => {
+    const response = await fetch(apiPath(`/api/chats/${chatId}/${path}`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw new Error(result?.message ?? "Nao foi possivel completar a acao.");
     }
-  };
-
-  const updateAnnouncementDealStatus = async (announcementId: string, status: "pending" | "closed" | "none") => {
-    const apiValue = status === "pending" ? "PENDING" : status === "closed" ? "CLOSED" : "NONE";
-    try {
-      const response = await fetch(apiPath(`/api/announcements/${announcementId}/deal`), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ dealStatus: apiValue }),
-      });
-      if (!response.ok) return;
-      const updated = (await response.json()) as Announcement;
-      setAnnouncements((prev) => prev.map((item) => (item.id === announcementId ? updated : item)));
-    } catch (error) {
-      console.error("Erro ao atualizar negocio do anuncio:", error);
-    }
+    refetchChats();
   };
 
   const handleSaveProfessionalProfile = () => {
@@ -996,135 +981,40 @@ const DashboardUsuario = () => {
     }
   };
 
-  const handleAcceptDeal = (chatId: string) => {
-    const now = new Date().toISOString();
-    const nextChats = storedChats.flatMap((chat) => {
-      if (chat.id !== chatId) return [chat];
-      const closedChat = {
-        ...chat,
-        dealStatus: "closed",
-        pendingDealFrom: null,
-        closePendingFrom: null,
-        messages: [
-          ...(chat.messages ?? []),
-          {
-            id: `system-${Date.now()}`,
-            sender: "me",
-            senderId: ownerId,
-            text: "Negócio aceito. O acordo foi fechado.",
-            createdAt: now,
-            kind: "text",
-          } as ChatMessage,
-        ],
-      };
-      const newChat: StoredChat = {
-        ...chat,
-        id: `chat-${chat.projectId}-${chat.participantId}-${Date.now()}`,
-        dealStatus: null,
-        pendingDealFrom: null,
-        closePendingFrom: null,
-        contractStatus: null,
-        createdAt: new Date().toISOString(),
-        messages: [],
-      };
-      return [closedChat, newChat];
-    });
-    updateStoredChats(nextChats);
-    const chat = storedChats.find((item) => item.id === chatId);
-    if (chat?.projectId) {
-      updateAnnouncementDealStatus(chat.projectId, "closed");
+  const handleAcceptDeal = async (chatId: string) => {
+    try {
+      await postChatAction(chatId, "deal", { action: "accept" });
+      toast.success("Negócio fechado com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível fechar o negócio.");
     }
-    toast.success("Negócio fechado com sucesso!");
   };
 
-  const handleRequestProjectClose = (chatId: string) => {
-    const now = new Date().toISOString();
-    const nextChats = storedChats.map((chat) => {
-      if (chat.id !== chatId) return chat;
-      return {
-        ...chat,
-        closePendingFrom: ownerId,
-        messages: [
-          ...(chat.messages ?? []),
-          {
-            id: `system-${Date.now()}`,
-            sender: "me",
-            senderId: ownerId,
-            text: "Solicitação de fechamento enviada. Aguardando confirmação da outra parte.",
-            createdAt: now,
-            kind: "text",
-          } as ChatMessage,
-        ],
-      };
-    });
-    updateStoredChats(nextChats);
-    toast.success("Fechamento solicitado.");
-  };
-
-  const handleAcceptProjectClose = (chatId: string) => {
-    const now = new Date().toISOString();
-    const nextChats = storedChats.flatMap((chat) => {
-      if (chat.id !== chatId) return [chat];
-      const closedChat = {
-        ...chat,
-        dealStatus: "closed",
-        closePendingFrom: null,
-        pendingDealFrom: null,
-        messages: [
-          ...(chat.messages ?? []),
-          {
-            id: `system-${Date.now()}`,
-            sender: "me",
-            senderId: ownerId,
-            text: "Negócio fechado.",
-            createdAt: now,
-            kind: "text",
-          } as ChatMessage,
-        ],
-      };
-      const newChat: StoredChat = {
-        ...chat,
-        id: `chat-${chat.projectId}-${chat.participantId}-${Date.now()}`,
-        dealStatus: null,
-        pendingDealFrom: null,
-        closePendingFrom: null,
-        contractStatus: null,
-        createdAt: new Date().toISOString(),
-        messages: [],
-      };
-      return [closedChat, newChat];
-    });
-    updateStoredChats(nextChats);
-    const chat = storedChats.find((item) => item.id === chatId);
-    if (chat?.projectId) {
-      updateAnnouncementDealStatus(chat.projectId, "closed");
+  const handleRequestProjectClose = async (chatId: string) => {
+    try {
+      await postChatAction(chatId, "close", { action: "request" });
+      toast.success("Fechamento solicitado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível solicitar o fechamento.");
     }
-    toast.success("Negócio finalizado com sucesso!");
   };
 
-  const handleRejectProjectClose = (chatId: string) => {
-    const now = new Date().toISOString();
-    const nextChats = storedChats.map((chat) =>
-      chat.id === chatId
-        ? {
-            ...chat,
-            closePendingFrom: null,
-            messages: [
-              ...(chat.messages ?? []),
-              {
-                id: `system-${Date.now()}`,
-                sender: "me",
-                senderId: ownerId,
-                text: "Fechamento recusado.",
-                createdAt: now,
-                kind: "text",
-              } as ChatMessage,
-            ],
-          }
-        : chat,
-    );
-    updateStoredChats(nextChats);
-    toast.success("Fechamento recusado.");
+  const handleAcceptProjectClose = async (chatId: string) => {
+    try {
+      await postChatAction(chatId, "close", { action: "accept" });
+      toast.success("Negócio finalizado com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível finalizar o negócio.");
+    }
+  };
+
+  const handleRejectProjectClose = async (chatId: string) => {
+    try {
+      await postChatAction(chatId, "close", { action: "reject" });
+      toast.success("Fechamento recusado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível recusar o fechamento.");
+    }
   };
 
   const handleOpenPendingChat = (chatId: string) => {
@@ -1138,36 +1028,19 @@ const DashboardUsuario = () => {
     setShowRejectDealModal(true);
   };
 
-  const handleRejectDeal = () => {
+  const handleRejectDeal = async () => {
     if (!rejectDealChatId) return;
     const reasonText = rejectDealReason.trim();
-    const nextChats = storedChats.map((chat) => {
-      if (chat.id !== rejectDealChatId) return chat;
-      const now = new Date().toISOString();
-      const systemMessage: ChatMessage = {
-        id: `system-${Date.now()}`,
-        sender: "other",
-        senderId: "system",
-        text: reasonText ? `Negócio recusado: ${reasonText}` : "Negócio recusado.",
-        createdAt: now,
-        kind: "text",
-      };
-      return {
-        ...chat,
-        dealStatus: null,
-        pendingDealFrom: null,
-        messages: [...(chat.messages ?? []), systemMessage],
-      };
-    });
-    updateStoredChats(nextChats);
-    const chat = storedChats.find((item) => item.id === rejectDealChatId);
-    if (chat?.projectId) {
-      updateAnnouncementDealStatus(chat.projectId, "none");
+    try {
+      await postChatAction(rejectDealChatId, "deal", { action: "reject", reason: reasonText || undefined });
+      toast.success("Negócio recusado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível recusar o negócio.");
+    } finally {
+      setShowRejectDealModal(false);
+      setRejectDealChatId(null);
+      setRejectDealReason("");
     }
-    setShowRejectDealModal(false);
-    setRejectDealChatId(null);
-    setRejectDealReason("");
-    toast.success("Negócio recusado.");
   };
 
   const handleOpenChat = (chatId: string) => {
@@ -1179,13 +1052,15 @@ const DashboardUsuario = () => {
   };
 
   const markChatAsRead = (chatId: string, source: "project" | "professional") => {
-    const now = new Date().toISOString();
     if (source === "project") {
-      const next = { ...chatReadMap, [chatId]: now };
-      setChatReadMap(next);
-      saveReadMap(chatReadStorageKey, ownerId, next, "chat-reads:changed");
+      fetch(apiPath(`/api/chats/${chatId}/read`), { method: "POST", credentials: "include" })
+        .then(refetchChats)
+        .catch(() => {
+          // marcar como lido nao e critico o suficiente para bloquear a UI em caso de falha
+        });
       return;
     }
+    const now = new Date().toISOString();
     const next = { ...professionalReadMap, [chatId]: now };
     setProfessionalReadMap(next);
     saveReadMap(professionalChatReadStorageKey, ownerId, next, "professional-reads:changed");
@@ -1315,12 +1190,12 @@ const DashboardUsuario = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!activeChatId) return;
     const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
     if (files.length === 0) return;
 
-    const now = new Date().toISOString();
     const resolveKind = (type: string) => {
       if (type.startsWith("image/")) return "image";
       if (type.startsWith("video/")) return "video";
@@ -1328,24 +1203,44 @@ const DashboardUsuario = () => {
       return "file";
     };
 
-    const messages = files.map((file) => ({
-      id: `f-${Date.now()}-${file.name}`,
-      sender: "me" as const,
-      senderId: ownerId,
-      text: file.name,
-      createdAt: now,
-      kind: resolveKind(file.type),
-      fileName: file.name,
-      fileUrl: URL.createObjectURL(file),
-      fileType: file.type,
-    }));
     if (activeChatSource === "professional") {
+      const now = new Date().toISOString();
+      const messages = files.map((file) => ({
+        id: `f-${Date.now()}-${file.name}`,
+        sender: "me" as const,
+        senderId: ownerId,
+        text: file.name,
+        createdAt: now,
+        kind: resolveKind(file.type),
+        fileName: file.name,
+        fileUrl: URL.createObjectURL(file),
+        fileType: file.type,
+      }));
       appendMessagesToProfessionalChat(activeChatId, messages);
-    } else {
-      appendMessagesToChat(activeChatId, messages);
+      return;
     }
 
-    event.target.value = "";
+    for (const file of files) {
+      try {
+        const url = await uploadFile(file, file.name);
+        await appendMessagesToChat(activeChatId, [
+          {
+            id: `f-${Date.now()}-${file.name}`,
+            sender: "me",
+            senderId: ownerId,
+            text: file.name,
+            createdAt: new Date().toISOString(),
+            kind: resolveKind(file.type),
+            fileName: file.name,
+            fileUrl: url,
+            fileType: file.type,
+          },
+        ]);
+      } catch (error) {
+        console.error("Erro ao enviar anexo:", error);
+        toast.error("Não foi possível enviar o anexo.");
+      }
+    }
   };
 
   const startRecording = async () => {
@@ -1364,23 +1259,40 @@ const DashboardUsuario = () => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        const now = new Date().toISOString();
-        const audioMessage: ChatMessage = {
-          id: `a-${Date.now()}`,
-          sender: "me",
-          senderId: ownerId,
-          createdAt: now,
-          kind: "audio",
-          fileName: "Áudio",
-          fileUrl: url,
-        };
         if (activeChatSource === "professional") {
-          appendMessagesToProfessionalChat(activeChatId, [audioMessage]);
+          const url = URL.createObjectURL(blob);
+          appendMessagesToProfessionalChat(activeChatId, [
+            {
+              id: `a-${Date.now()}`,
+              sender: "me",
+              senderId: ownerId,
+              createdAt: new Date().toISOString(),
+              kind: "audio",
+              fileName: "Áudio",
+              fileUrl: url,
+            },
+          ]);
         } else {
-          appendMessagesToChat(activeChatId, [audioMessage]);
+          try {
+            const url = await uploadFile(blob, "audio.webm");
+            await appendMessagesToChat(activeChatId, [
+              {
+                id: `a-${Date.now()}`,
+                sender: "me",
+                senderId: ownerId,
+                createdAt: new Date().toISOString(),
+                kind: "audio",
+                fileName: "Áudio",
+                fileUrl: url,
+                fileType: "audio/webm",
+              },
+            ]);
+          } catch (error) {
+            console.error("Erro ao enviar audio:", error);
+            toast.error("Não foi possível enviar o áudio.");
+          }
         }
 
         audioChunksRef.current = [];

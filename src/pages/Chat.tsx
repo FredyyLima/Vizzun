@@ -1,4 +1,4 @@
-﻿import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import MediaMessage from "@/components/chat/MediaMessage";
 import {
   Send,
@@ -10,8 +10,9 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { apiPath } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -21,34 +22,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-interface Message {
+type ApiMessage = {
   id: string;
-  sender: "me" | "other";
   senderId?: string;
   text?: string;
   createdAt: string;
-  time: string;
   kind?: "text" | "file" | "audio" | "image" | "video";
   fileName?: string;
   fileUrl?: string;
   fileType?: string;
-}
-
-type StoredAnnouncement = {
-  id: string;
-  ownerId?: string;
-  ownerName?: string | null;
-  ownerEmail?: string | null;
-  title: string;
-  budget?: string;
 };
 
-type StoredChat = {
+type ApiChat = {
   id: string;
   projectId: string;
   ownerId: string;
   ownerName: string;
-  ownerEmail?: string | null;
   participantId: string;
   participantName: string;
   projectTitle: string;
@@ -57,298 +46,118 @@ type StoredChat = {
   dealStatus?: "pending" | "closed";
   closePendingFrom?: string | null;
   contractStatus?: "pending" | "accepted" | "rejected";
-  createdAt?: string;
-  messages: Message[];
+  messages: ApiMessage[];
 };
 
-const announcementStorageKey = "site_announcements";
-const chatStorageKey = "site_chats";
-const chatReadStorageKey = "chat_reads";
-
-const loadStoredAnnouncements = () => {
-  if (typeof window === "undefined") return [] as StoredAnnouncement[];
-  const raw = localStorage.getItem(announcementStorageKey);
-  if (!raw) return [] as StoredAnnouncement[];
-  try {
-    return JSON.parse(raw) as StoredAnnouncement[];
-  } catch {
-    return [] as StoredAnnouncement[];
-  }
-};
-
-const saveStoredAnnouncements = (items: StoredAnnouncement[]) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(announcementStorageKey, JSON.stringify(items));
-  window.dispatchEvent(new Event("announcements:changed"));
-};
-
-const loadStoredChats = () => {
-  if (typeof window === "undefined") return [] as StoredChat[];
-  const raw = localStorage.getItem(chatStorageKey);
-  if (!raw) return [] as StoredChat[];
-  try {
-    return JSON.parse(raw) as StoredChat[];
-  } catch {
-    return [] as StoredChat[];
-  }
-};
-
-const saveStoredChats = (chats: StoredChat[]) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(chatStorageKey, JSON.stringify(chats));
-  window.dispatchEvent(new Event("chats:changed"));
-};
-
-const saveChatRead = (userId: string, chatId: string) => {
-  if (typeof window === "undefined") return;
-  const raw = localStorage.getItem(chatReadStorageKey);
-  let parsed: Record<string, Record<string, string>> = {};
-  try {
-    parsed = raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {};
-  } catch {
-    parsed = {};
-  }
-  parsed[userId] = { ...(parsed[userId] ?? {}), [chatId]: new Date().toISOString() };
-  localStorage.setItem(chatReadStorageKey, JSON.stringify(parsed));
-  window.dispatchEvent(new Event("chat-reads:changed"));
-};
-
-const formatTime = (value: Date | string) =>
+const formatTime = (value: string) =>
   new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const normalizeMessages = (items: Message[]) =>
-  items.map((message) => ({
-    ...message,
-    createdAt: message.createdAt ?? new Date().toISOString(),
-    time: message.time ?? formatTime(message.createdAt ?? new Date()),
-  }));
+const resolveKind = (type: string) => {
+  if (type.startsWith("image/")) return "image" as const;
+  if (type.startsWith("video/")) return "video" as const;
+  if (type.startsWith("audio/")) return "audio" as const;
+  return "file" as const;
+};
+
+const uploadChatFile = async (file: Blob, filename: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file, filename);
+  const response = await fetch(apiPath("/api/uploads"), {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error("Falha ao enviar arquivo.");
+  }
+  const result = (await response.json()) as { url: string };
+  return result.url;
+};
 
 const Chat = () => {
   const { projectId } = useParams();
   const location = useLocation();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const queryClient = useQueryClient();
   const [newMessage, setNewMessage] = useState("");
   const [showDealModal, setShowDealModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [chatMeta, setChatMeta] = useState({
-    ownerName: "Cliente",
-    projectTitle: "Projeto",
-    projectBudget: "",
-  });
-  const [dealStatus, setDealStatus] = useState<"pending" | "closed" | null>(null);
-  const [pendingDealFrom, setPendingDealFrom] = useState<string | null>(null);
-  const [contractStatus, setContractStatus] = useState<"pending" | "accepted" | "rejected" | null>(null);
-  const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>(() =>
-    loadStoredAnnouncements(),
-  );
+  const [initError, setInitError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
   const { user: authUser, loading: authLoading } = useAuth();
-
-  const participantId = authUser?.id ?? authUser?.email ?? "guest";
-  const participantName = getDisplayName(authUser, "Usuario");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => setStoredAnnouncements(loadStoredAnnouncements());
-    window.addEventListener("storage", reload);
-    window.addEventListener("announcements:changed", reload as EventListener);
-    return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("announcements:changed", reload as EventListener);
-    };
-  }, []);
+  const participantId = authUser?.id ?? "guest";
 
   useEffect(() => {
     if (!authUser || !projectId) return;
-    const announcement = storedAnnouncements.find((item) => item.id === projectId) ?? null;
-    const ownerName = sanitizeDisplayName(announcement?.ownerName?.trim() ?? null, "Cliente");
-    const ownerId = announcement?.ownerId ?? announcement?.ownerEmail ?? "owner";
-    const projectTitle = announcement?.title ?? "Projeto";
-    const projectBudget = announcement?.budget ?? "";
-    const storedChats = loadStoredChats();
-    const openChats = storedChats.filter(
-      (chat) => chat.projectId === projectId && chat.participantId === participantId && chat.dealStatus !== "closed",
-    );
-    const sortedOpenChats = [...openChats].sort((a, b) => {
-      const aTime = new Date(a.createdAt ?? 0).getTime();
-      const bTime = new Date(b.createdAt ?? 0).getTime();
-      return bTime - aTime;
-    });
-    const nextChatId = sortedOpenChats[0]?.id ?? `chat-${projectId}-${participantId}-${Date.now()}`;
-    const isOwnerView = ownerId === participantId;
-    const existingIndex = storedChats.findIndex((chat) => chat.id === nextChatId);
-    let chatRecord: StoredChat;
-    if (existingIndex >= 0) {
-      const existing = storedChats[existingIndex];
-      const updated = {
-        ...existing,
-        ownerId,
-        ownerName,
-        ownerEmail: announcement?.ownerEmail ?? existing.ownerEmail ?? null,
-        participantName: isOwnerView ? existing.participantName : participantName,
-        projectTitle,
-        projectBudget,
-        createdAt: existing.createdAt ?? new Date().toISOString(),
-        messages: normalizeMessages(existing.messages ?? []),
-      };
-      storedChats[existingIndex] = updated;
-      saveStoredChats(storedChats);
-      setMessages(updated.messages ?? []);
-      setDealStatus(updated.dealStatus ?? null);
-      setPendingDealFrom(updated.pendingDealFrom ?? null);
-      setContractStatus(updated.contractStatus ?? null);
-      chatRecord = updated;
-    } else {
-      const newChat: StoredChat = {
-        id: nextChatId,
-        projectId,
-        ownerId,
-        ownerName,
-        ownerEmail: announcement?.ownerEmail ?? null,
-        participantId,
-        participantName,
-        projectTitle,
-        projectBudget,
-        pendingDealFrom: null,
-        dealStatus: null,
-        closePendingFrom: null,
-        createdAt: new Date().toISOString(),
-        messages: [],
-      };
-      storedChats.push(newChat);
-      saveStoredChats(storedChats);
-      setMessages([]);
-      setDealStatus(null);
-      setPendingDealFrom(null);
-      setContractStatus(null);
-      chatRecord = newChat;
-    }
-
-    const otherName = isOwnerView
-      ? sanitizeDisplayName(chatRecord.participantName, "Usuario")
-      : sanitizeDisplayName(chatRecord.ownerName, "Cliente");
-    setChatMeta({ ownerName: otherName, projectTitle, projectBudget });
-    setChatId(nextChatId);
-  }, [authUser, projectId, participantId, participantName, storedAnnouncements]);
-
-  useEffect(() => {
-    if (!chatId) return;
-    const syncChat = () => {
-      const storedChats = loadStoredChats();
-      const current = storedChats.find((chat) => chat.id === chatId);
-      if (!current) return;
-      setDealStatus(current.dealStatus ?? null);
-      setPendingDealFrom(current.pendingDealFrom ?? null);
-      setContractStatus(current.contractStatus ?? null);
-      setMessages(normalizeMessages(current.messages ?? []));
-    };
-    window.addEventListener("storage", syncChat);
-    window.addEventListener("chats:changed", syncChat as EventListener);
+    let active = true;
+    fetch(apiPath("/api/chats"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ announcementId: projectId }),
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+      .then((chat: ApiChat) => {
+        if (active) setChatId(chat.id);
+      })
+      .catch(() => {
+        if (active) setInitError(true);
+      });
     return () => {
-      window.removeEventListener("storage", syncChat);
-      window.removeEventListener("chats:changed", syncChat as EventListener);
+      active = false;
     };
-  }, [chatId]);
+  }, [authUser, projectId]);
+
+  const { data: chat } = useQuery({
+    queryKey: ["chat", chatId],
+    queryFn: async () => {
+      const response = await fetch(apiPath(`/api/chats/${chatId}`), { credentials: "include" });
+      if (!response.ok) throw new Error("Falha ao carregar chat.");
+      return (await response.json()) as ApiChat;
+    },
+    enabled: !!chatId,
+    refetchInterval: 3000,
+  });
+
+  const messages = chat?.messages ?? [];
+  const isOwnerView = chat ? chat.ownerId === participantId : false;
+  const otherName = chat ? (isOwnerView ? chat.participantName : chat.ownerName) : "Cliente";
+
+  const refetchChat = () => queryClient.invalidateQueries({ queryKey: ["chat", chatId] });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!chatId) return;
-    saveChatRead(participantId, chatId);
-  }, [chatId, participantId, messages]);
-
-  const persistChatMessages = (nextMessages: Message[]) => {
-    if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const chatIndex = storedChats.findIndex((chat) => chat.id === chatId);
-    if (chatIndex < 0) return;
-    storedChats[chatIndex] = {
-      ...storedChats[chatIndex],
-      messages: normalizeMessages(nextMessages),
-    };
-    saveStoredChats(storedChats);
-  };
-
-  const updateChatDealStatus = (status: "pending" | "closed", fromId?: string | null) => {
-    if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const chatIndex = storedChats.findIndex((chat) => chat.id === chatId);
-    if (chatIndex < 0) return;
-    const updated = {
-      ...storedChats[chatIndex],
-      dealStatus: status,
-      pendingDealFrom: status === "pending" ? fromId ?? participantId : null,
-    };
-    storedChats[chatIndex] = updated;
-    saveStoredChats(storedChats);
-    setDealStatus(updated.dealStatus ?? null);
-    setPendingDealFrom(updated.pendingDealFrom ?? null);
-
-    if (projectId) {
-      const storedAnnouncements = loadStoredAnnouncements();
-      const nextAnnouncements = storedAnnouncements.map((item) =>
-        item.id === projectId ? { ...item, dealStatus: status } : item,
-      );
-      saveStoredAnnouncements(nextAnnouncements);
-    }
-  };
-
-  const updateChatContractStatus = (status: "accepted" | "rejected") => {
-    if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const chatIndex = storedChats.findIndex((chat) => chat.id === chatId);
-    if (chatIndex < 0) return;
-    const now = new Date().toISOString();
-    const systemMessage: Message = {
-      id: `system-${Date.now()}`,
-      sender: "other",
-      senderId: "system",
-      text: status === "accepted" ? "Contrato aceito pelo profissional." : "Contrato recusado pelo profissional.",
-      createdAt: now,
-      time: formatTime(now),
-      kind: "text",
-    };
-    const updated = {
-      ...storedChats[chatIndex],
-      contractStatus: status,
-      messages: [...(storedChats[chatIndex].messages ?? []), systemMessage],
-    };
-    storedChats[chatIndex] = updated;
-    saveStoredChats(storedChats);
-    setContractStatus(updated.contractStatus ?? null);
-    setMessages(normalizeMessages(updated.messages ?? []));
-  };
-
-  const appendMessages = (newMessages: Message[]) => {
-    if (!chatId) return;
-    setMessages((prev) => {
-      const next = [...prev, ...newMessages];
-      persistChatMessages(next);
-      return next;
+    fetch(apiPath(`/api/chats/${chatId}/read`), { method: "POST", credentials: "include" }).catch(() => {
+      // marcar como lido nao e critico o suficiente para bloquear a UI em caso de falha
     });
+  }, [chatId, messages.length]);
+
+  const postMessage = async (body: Record<string, unknown>) => {
+    if (!chatId) return;
+    try {
+      await fetch(apiPath(`/api/chats/${chatId}/messages`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      refetchChat();
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+    }
   };
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !chatId) return;
-    const now = new Date();
-    const message: Message = {
-      id: Date.now().toString(),
-      sender: "me",
-      senderId: participantId,
-      text: newMessage,
-      createdAt: now.toISOString(),
-      time: formatTime(now),
-      kind: "text",
-    };
-
-    appendMessages([message]);
+    postMessage({ text: newMessage, kind: "text" });
     setNewMessage("");
   };
 
@@ -363,33 +172,20 @@ const Chat = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!chatId) return;
     const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
     if (files.length === 0) return;
 
-    const now = new Date();
-    const resolveKind = (type: string) => {
-      if (type.startsWith("image/")) return "image";
-      if (type.startsWith("video/")) return "video";
-      if (type.startsWith("audio/")) return "audio";
-      return "file";
-    };
-
-    const newAttachments = files.map((file) => ({
-      id: `${Date.now()}-${file.name}`,
-      sender: "me" as const,
-      senderId: participantId,
-      createdAt: now.toISOString(),
-      time: formatTime(now),
-      kind: resolveKind(file.type),
-      fileName: file.name,
-      fileUrl: URL.createObjectURL(file),
-      fileType: file.type,
-    }));
-
-    appendMessages(newAttachments);
-    event.target.value = "";
+    for (const file of files) {
+      try {
+        const url = await uploadChatFile(file, file.name);
+        await postMessage({ kind: resolveKind(file.type), fileName: file.name, fileUrl: url, fileType: file.type });
+      } catch (error) {
+        console.error("Erro ao enviar anexo:", error);
+      }
+    }
   };
 
   const startRecording = async () => {
@@ -408,24 +204,14 @@ const Chat = () => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        const now = new Date();
-
-        appendMessages([
-          {
-            id: `${Date.now()}-audio`,
-            sender: "me",
-            senderId: participantId,
-            createdAt: now.toISOString(),
-            time: formatTime(now),
-            kind: "audio",
-            fileName: "Áudio",
-            fileUrl: url,
-          },
-        ]);
-
+        try {
+          const url = await uploadChatFile(blob, "audio.webm");
+          await postMessage({ kind: "audio", fileName: "Áudio", fileUrl: url, fileType: "audio/webm" });
+        } catch (error) {
+          console.error("Erro ao enviar audio:", error);
+        }
         audioChunksRef.current = [];
         stream.getTracks().forEach((track) => track.stop());
       };
@@ -444,7 +230,35 @@ const Chat = () => {
     setIsRecording(false);
   };
 
+  const proposeDeal = () => {
+    if (!chatId) return;
+    fetch(apiPath(`/api/chats/${chatId}/deal`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action: "propose" }),
+    })
+      .then(refetchChat)
+      .catch((error) => console.error("Erro ao propor negocio:", error));
+    setShowDealModal(false);
+  };
+
+  const respondContract = (action: "accept" | "reject") => {
+    if (!chatId) return;
+    fetch(apiPath(`/api/chats/${chatId}/contract`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action }),
+    })
+      .then(refetchChat)
+      .catch((error) => console.error("Erro ao responder contrato:", error));
+  };
+
   const projectLink = projectId ? `/projeto/${projectId}` : "/projetos";
+  const dealStatus = chat?.dealStatus ?? null;
+  const pendingDealFrom = chat?.pendingDealFrom ?? null;
+  const contractStatus = chat?.contractStatus ?? null;
   const isDealClosed = dealStatus === "closed";
   const isDealPending = dealStatus === "pending";
   const isPendingFromMe = pendingDealFrom === participantId;
@@ -476,6 +290,20 @@ const Chat = () => {
     );
   }
 
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Projeto não encontrado</h2>
+          <p className="text-sm text-muted-foreground">Este anúncio não está mais disponível.</p>
+          <Link to="/projetos">
+            <Button variant="secondary">Ver outros projetos</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Chat Header */}
@@ -490,11 +318,11 @@ const Chat = () => {
               &lt;
             </Link>
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-semibold">
-              {chatMeta.ownerName.charAt(0).toUpperCase()}
+              {otherName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="font-semibold text-foreground">{chatMeta.ownerName}</h2>
-              <p className="text-xs text-muted-foreground">{chatMeta.projectTitle}</p>
+              <h2 className="font-semibold text-foreground">{otherName}</h2>
+              <p className="text-xs text-muted-foreground">{chat?.projectTitle ?? "Projeto"}</p>
             </div>
           </div>
         </div>
@@ -509,8 +337,6 @@ const Chat = () => {
           >
             {isDealClosed ? "Negócio fechado" : isDealPending ? "Negócio pendente" : "Fechar Negócio"}
           </Button>
-          
-          
         </div>
       </div>
 
@@ -519,11 +345,11 @@ const Chat = () => {
         <div className="flex items-center gap-4 text-sm">
           <span className="text-muted-foreground">Projeto:</span>
           <Link to={projectLink} className="font-medium text-primary hover:underline">
-            {chatMeta.projectTitle}
+            {chat?.projectTitle ?? "Projeto"}
           </Link>
-          {chatMeta.projectBudget && (
+          {chat?.projectBudget && (
             <span className="hidden sm:inline px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-xs font-medium">
-              {chatMeta.projectBudget}
+              {chat.projectBudget}
             </span>
           )}
         </div>
@@ -551,7 +377,7 @@ const Chat = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => updateChatContractStatus("accepted")}
+              onClick={() => respondContract("accept")}
               disabled={contractStatus === "accepted"}
             >
               Aceitar contrato
@@ -559,7 +385,7 @@ const Chat = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateChatContractStatus("rejected")}
+              onClick={() => respondContract("reject")}
               disabled={contractStatus === "rejected"}
             >
               Recusar contrato
@@ -591,7 +417,7 @@ const Chat = () => {
           </div>
         )}
         {messages.map((message) => {
-          const isMe = message.senderId ? message.senderId === participantId : message.sender === "me";
+          const isMe = message.senderId === participantId;
           return (
             <div key={message.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
               <div
@@ -603,7 +429,7 @@ const Chat = () => {
               >
                 <MediaMessage message={message} isMe={isMe} />
                 <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                  {message.time}
+                  {formatTime(message.createdAt)}
                 </p>
               </div>
             </div>
@@ -662,14 +488,14 @@ const Chat = () => {
           <DialogHeader>
             <DialogTitle className="text-xl">Fechar Negócio</DialogTitle>
             <DialogDescription className="text-base">
-              Você deseja oficializar o serviço com <strong>{chatMeta.ownerName}</strong>?
+              Você deseja oficializar o serviço com <strong>{otherName}</strong>?
             </DialogDescription>
           </DialogHeader>
           <div className="bg-muted/50 rounded-xl p-4 my-4">
             <p className="text-sm text-muted-foreground mb-2">Projeto:</p>
-            <p className="font-medium text-foreground">{chatMeta.projectTitle}</p>
+            <p className="font-medium text-foreground">{chat?.projectTitle ?? "Projeto"}</p>
             <p className="text-sm text-muted-foreground mt-2">Valor acordado:</p>
-            <p className="text-2xl font-bold text-primary">{chatMeta.projectBudget || "A combinar"}</p>
+            <p className="text-2xl font-bold text-primary">{chat?.projectBudget || "A combinar"}</p>
           </div>
           <p className="text-sm text-muted-foreground">
             A outra parte receberá uma notificação para confirmar o acordo. Após a confirmação de ambos, o
@@ -680,13 +506,7 @@ const Chat = () => {
               <X className="h-4 w-4 mr-2" />
               Cancelar
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                updateChatDealStatus("pending", participantId);
-                setShowDealModal(false);
-              }}
-            >
+            <Button variant="secondary" onClick={proposeDeal}>
               <Check className="h-4 w-4 mr-2" />
               Confirmar
             </Button>

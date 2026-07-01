@@ -91,6 +91,8 @@ type StoredProfessionalChat = {
   dealStatus?: "open" | "closed";
   closePendingFrom?: string | null;
   createdAt?: string;
+  professionalLastReadAt?: string | null;
+  clientLastReadAt?: string | null;
   messages: ChatMessage[];
 };
 
@@ -202,8 +204,6 @@ const brazilStates = [
 ];
 
 const profileStorageKey = "professional_profiles";
-const professionalChatStorageKey = "professional_chats";
-const professionalChatReadStorageKey = "professional_chat_reads";
 
 const loadStoredProfiles = () => {
   if (typeof window === "undefined") return [] as ProfessionalProfile[];
@@ -214,43 +214,6 @@ const loadStoredProfiles = () => {
   } catch {
     return [] as ProfessionalProfile[];
   }
-};
-
-const loadStoredProfessionalChats = () => {
-  if (typeof window === "undefined") return [] as StoredProfessionalChat[];
-  const raw = localStorage.getItem(professionalChatStorageKey);
-  if (!raw) return [] as StoredProfessionalChat[];
-  try {
-    return JSON.parse(raw) as StoredProfessionalChat[];
-  } catch {
-    return [] as StoredProfessionalChat[];
-  }
-};
-
-const loadReadMap = (storageKey: string, userId: string) => {
-  if (typeof window === "undefined") return {} as Record<string, string>;
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) return {} as Record<string, string>;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, Record<string, string>>;
-    return parsed[userId] ?? {};
-  } catch {
-    return {} as Record<string, string>;
-  }
-};
-
-const saveReadMap = (storageKey: string, userId: string, next: Record<string, string>, eventName: string) => {
-  if (typeof window === "undefined") return;
-  const raw = localStorage.getItem(storageKey);
-  let parsed: Record<string, Record<string, string>> = {};
-  try {
-    parsed = raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {};
-  } catch {
-    parsed = {};
-  }
-  parsed[userId] = next;
-  localStorage.setItem(storageKey, JSON.stringify(parsed));
-  window.dispatchEvent(new Event(eventName));
 };
 
 const buildChatPreview = (message?: ChatMessage) => {
@@ -384,10 +347,6 @@ const DashboardUsuario = () => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeChatSource, setActiveChatSource] = useState<"project" | "professional">("project");
   const [draftMessage, setDraftMessage] = useState("");
-  const [storedProfessionalChats, setStoredProfessionalChats] = useState<StoredProfessionalChat[]>(() =>
-    loadStoredProfessionalChats(),
-  );
-  const [professionalReadMap, setProfessionalReadMap] = useState<Record<string, string>>({});
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [titleValue, setTitleValue] = useState("");
   const [categoryValue, setCategoryValue] = useState("");
@@ -521,20 +480,6 @@ const DashboardUsuario = () => {
     }
   }, [activeSection]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => {
-      setProfessionalReadMap(loadReadMap(professionalChatReadStorageKey, ownerId));
-    };
-    reload();
-    window.addEventListener("storage", reload);
-    window.addEventListener("professional-reads:changed", reload as EventListener);
-    return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("professional-reads:changed", reload as EventListener);
-    };
-  }, [ownerId]);
-
   const { data: storedChats = [] } = useQuery({
     queryKey: ["chats"],
     queryFn: async () => {
@@ -558,18 +503,28 @@ const DashboardUsuario = () => {
     return map;
   }, [storedChats, ownerId]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => {
-      setStoredProfessionalChats(loadStoredProfessionalChats());
-    };
-    window.addEventListener("storage", reload);
-    window.addEventListener("professional-chats:changed", reload as EventListener);
-    return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("professional-chats:changed", reload as EventListener);
-    };
-  }, []);
+  const { data: storedProfessionalChats = [] } = useQuery({
+    queryKey: ["professional-chats"],
+    queryFn: async () => {
+      const response = await fetch(apiPath("/api/professional-chats"), { credentials: "include" });
+      if (!response.ok) return [] as StoredProfessionalChat[];
+      return (await response.json()) as StoredProfessionalChat[];
+    },
+    enabled: Boolean(authUser?.id),
+    refetchInterval: 4000,
+  });
+
+  const refetchProfessionalChats = () => queryClient.invalidateQueries({ queryKey: ["professional-chats"] });
+
+  const professionalReadMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    storedProfessionalChats.forEach((chat) => {
+      const isProfessionalOfChat = chat.professionalId === ownerId;
+      const readAt = isProfessionalOfChat ? chat.professionalLastReadAt : chat.clientLastReadAt;
+      if (readAt) map[chat.id] = readAt;
+    });
+    return map;
+  }, [storedProfessionalChats, ownerId]);
 
   useEffect(() => {
     if (!authUser?.id) {
@@ -838,25 +793,28 @@ const DashboardUsuario = () => {
     }
   };
 
-  const appendMessagesToProfessionalChat = (chatId: string, newMessages: ChatMessage[]) => {
+  const appendMessagesToProfessionalChat = async (chatId: string, newMessages: ChatMessage[]) => {
     if (!chatId) return;
-    setStoredProfessionalChats((prev) => {
-      const next = prev.map((chat) => {
-        if (chat.id !== chatId) return chat;
-        return {
-          ...chat,
-          messages: [...(chat.messages ?? []), ...newMessages],
-        };
-      });
-      try {
-        localStorage.setItem(professionalChatStorageKey, JSON.stringify(next));
-        window.dispatchEvent(new Event("professional-chats:changed"));
-      } catch (error) {
-        console.error("Erro ao salvar chats profissionais:", error);
-        toast.error("Não foi possível salvar o chat.");
+    try {
+      for (const message of newMessages) {
+        await fetch(apiPath(`/api/professional-chats/${chatId}/messages`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            text: message.text,
+            kind: message.kind ?? "text",
+            fileName: message.fileName,
+            fileUrl: message.fileUrl,
+            fileType: message.fileType,
+          }),
+        });
       }
-      return next;
-    });
+      refetchProfessionalChats();
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+      toast.error("Não foi possível enviar a mensagem.");
+    }
   };
 
   const postChatAction = async (chatId: string, path: string, body: Record<string, unknown>) => {
@@ -871,6 +829,20 @@ const DashboardUsuario = () => {
       throw new Error(result?.message ?? "Nao foi possivel completar a acao.");
     }
     refetchChats();
+  };
+
+  const postProfessionalChatAction = async (chatId: string, path: string, body: Record<string, unknown>) => {
+    const response = await fetch(apiPath(`/api/professional-chats/${chatId}/${path}`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw new Error(result?.message ?? "Nao foi possivel completar a acao.");
+    }
+    refetchProfessionalChats();
   };
 
   const handleSaveProfessionalProfile = () => {
@@ -1052,118 +1024,40 @@ const DashboardUsuario = () => {
   };
 
   const markChatAsRead = (chatId: string, source: "project" | "professional") => {
-    if (source === "project") {
-      fetch(apiPath(`/api/chats/${chatId}/read`), { method: "POST", credentials: "include" })
-        .then(refetchChats)
-        .catch(() => {
-          // marcar como lido nao e critico o suficiente para bloquear a UI em caso de falha
-        });
-      return;
+    const path = source === "project" ? `/api/chats/${chatId}/read` : `/api/professional-chats/${chatId}/read`;
+    const refetch = source === "project" ? refetchChats : refetchProfessionalChats;
+    fetch(apiPath(path), { method: "POST", credentials: "include" })
+      .then(refetch)
+      .catch(() => {
+        // marcar como lido nao e critico o suficiente para bloquear a UI em caso de falha
+      });
+  };
+
+  const handleRequestProfessionalClose = async (chatId: string) => {
+    try {
+      await postProfessionalChatAction(chatId, "close", { action: "request" });
+      toast.success("Fechamento solicitado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível solicitar o fechamento.");
     }
-    const now = new Date().toISOString();
-    const next = { ...professionalReadMap, [chatId]: now };
-    setProfessionalReadMap(next);
-    saveReadMap(professionalChatReadStorageKey, ownerId, next, "professional-reads:changed");
   };
 
-  const handleRequestProfessionalClose = (chatId: string) => {
-    setStoredProfessionalChats((prev) => {
-      const next = prev.map((chat) => {
-        if (chat.id !== chatId) return chat;
-        const systemMessage: ChatMessage = {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: ownerId,
-          text: "Solicitação de fechamento enviada. Aguardando confirmação da outra parte.",
-          createdAt: new Date().toISOString(),
-          kind: "text",
-        };
-        return {
-          ...chat,
-          closePendingFrom: ownerId,
-          messages: [...(chat.messages ?? []), systemMessage],
-        };
-      });
-      try {
-        localStorage.setItem(professionalChatStorageKey, JSON.stringify(next));
-        window.dispatchEvent(new Event("professional-chats:changed"));
-      } catch (error) {
-        console.error("Erro ao salvar chats profissionais:", error);
-        toast.error("Não foi possível solicitar o fechamento.");
-      }
-      return next;
-    });
-    toast.success("Fechamento solicitado.");
+  const handleAcceptProfessionalClose = async (chatId: string) => {
+    try {
+      await postProfessionalChatAction(chatId, "close", { action: "accept" });
+      toast.success("Negócio finalizado com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível finalizar o negócio.");
+    }
   };
 
-  const handleAcceptProfessionalClose = (chatId: string) => {
-    setStoredProfessionalChats((prev) => {
-      const next = prev.flatMap((chat) => {
-        if (chat.id !== chatId) return [chat];
-        const systemMessage: ChatMessage = {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: ownerId,
-          text: "Negócio fechado.",
-          createdAt: new Date().toISOString(),
-          kind: "text",
-        };
-        const closedChat = {
-          ...chat,
-          closePendingFrom: null,
-          dealStatus: "closed",
-          messages: [...(chat.messages ?? []), systemMessage],
-        };
-        const newChat: StoredProfessionalChat = {
-          ...chat,
-          id: `pro-${chat.professionalId}-${chat.clientId}-${Date.now()}`,
-          closePendingFrom: null,
-          dealStatus: "open",
-          createdAt: new Date().toISOString(),
-          messages: [],
-        };
-        return [closedChat, newChat];
-      });
-      try {
-        localStorage.setItem(professionalChatStorageKey, JSON.stringify(next));
-        window.dispatchEvent(new Event("professional-chats:changed"));
-      } catch (error) {
-        console.error("Erro ao salvar chats profissionais:", error);
-        toast.error("Não foi possível finalizar o negócio.");
-      }
-      return next;
-    });
-    toast.success("Negócio finalizado com sucesso!");
-  };
-
-  const handleRejectProfessionalClose = (chatId: string) => {
-    setStoredProfessionalChats((prev) => {
-      const next = prev.map((chat) => {
-        if (chat.id !== chatId) return chat;
-        const systemMessage: ChatMessage = {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: ownerId,
-          text: "Fechamento recusado.",
-          createdAt: new Date().toISOString(),
-          kind: "text",
-        };
-        return {
-          ...chat,
-          closePendingFrom: null,
-          messages: [...(chat.messages ?? []), systemMessage],
-        };
-      });
-      try {
-        localStorage.setItem(professionalChatStorageKey, JSON.stringify(next));
-        window.dispatchEvent(new Event("professional-chats:changed"));
-      } catch (error) {
-        console.error("Erro ao salvar chats profissionais:", error);
-        toast.error("Não foi possível recusar o fechamento.");
-      }
-      return next;
-    });
-    toast.success("Fechamento recusado.");
+  const handleRejectProfessionalClose = async (chatId: string) => {
+    try {
+      await postProfessionalChatAction(chatId, "close", { action: "reject" });
+      toast.success("Fechamento recusado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível recusar o fechamento.");
+    }
   };
 
   const handleSendMessage = () => {
@@ -1203,27 +1097,12 @@ const DashboardUsuario = () => {
       return "file";
     };
 
-    if (activeChatSource === "professional") {
-      const now = new Date().toISOString();
-      const messages = files.map((file) => ({
-        id: `f-${Date.now()}-${file.name}`,
-        sender: "me" as const,
-        senderId: ownerId,
-        text: file.name,
-        createdAt: now,
-        kind: resolveKind(file.type),
-        fileName: file.name,
-        fileUrl: URL.createObjectURL(file),
-        fileType: file.type,
-      }));
-      appendMessagesToProfessionalChat(activeChatId, messages);
-      return;
-    }
+    const append = activeChatSource === "professional" ? appendMessagesToProfessionalChat : appendMessagesToChat;
 
     for (const file of files) {
       try {
         const url = await uploadFile(file, file.name);
-        await appendMessagesToChat(activeChatId, [
+        await append(activeChatId, [
           {
             id: `f-${Date.now()}-${file.name}`,
             sender: "me",
@@ -1261,9 +1140,10 @@ const DashboardUsuario = () => {
 
       recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (activeChatSource === "professional") {
-          const url = URL.createObjectURL(blob);
-          appendMessagesToProfessionalChat(activeChatId, [
+        const append = activeChatSource === "professional" ? appendMessagesToProfessionalChat : appendMessagesToChat;
+        try {
+          const url = await uploadFile(blob, "audio.webm");
+          await append(activeChatId, [
             {
               id: `a-${Date.now()}`,
               sender: "me",
@@ -1272,27 +1152,12 @@ const DashboardUsuario = () => {
               kind: "audio",
               fileName: "Áudio",
               fileUrl: url,
+              fileType: "audio/webm",
             },
           ]);
-        } else {
-          try {
-            const url = await uploadFile(blob, "audio.webm");
-            await appendMessagesToChat(activeChatId, [
-              {
-                id: `a-${Date.now()}`,
-                sender: "me",
-                senderId: ownerId,
-                createdAt: new Date().toISOString(),
-                kind: "audio",
-                fileName: "Áudio",
-                fileUrl: url,
-                fileType: "audio/webm",
-              },
-            ]);
-          } catch (error) {
-            console.error("Erro ao enviar audio:", error);
-            toast.error("Não foi possível enviar o áudio.");
-          }
+        } catch (error) {
+          console.error("Erro ao enviar audio:", error);
+          toast.error("Não foi possível enviar o áudio.");
         }
 
         audioChunksRef.current = [];

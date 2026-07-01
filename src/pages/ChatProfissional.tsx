@@ -3,6 +3,7 @@ import MediaMessage from "@/components/chat/MediaMessage";
 import { Send, Paperclip, Mic, Square, Check, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -11,324 +12,154 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { sanitizeDisplayName } from "@/lib/user";
 import { useAuth } from "@/hooks/use-auth";
+import { apiPath } from "@/lib/api";
 
-type Message = {
+type ApiMessage = {
   id: string;
-  sender: "me" | "other";
   senderId?: string;
   text?: string;
   createdAt: string;
-  time: string;
   kind?: "text" | "file" | "audio" | "image" | "video";
   fileName?: string;
   fileUrl?: string;
   fileType?: string;
 };
 
-type StoredProfile = {
-  id: string;
-  name: string;
-  avatar?: string | null;
-  specialty?: string | null;
-  location?: string | null;
-};
-
-type StoredProfessionalChat = {
+type ApiProfessionalChat = {
   id: string;
   professionalId: string;
   professionalName: string;
   clientId: string;
   clientName: string;
-  dealStatus?: "open" | "closed";
+  dealStatus: "open" | "closed";
   closePendingFrom?: string | null;
-  createdAt?: string;
-  messages: Message[];
+  messages: ApiMessage[];
 };
 
-const profileStorageKey = "professional_profiles";
-const chatStorageKey = "professional_chats";
-const professionalChatReadStorageKey = "professional_chat_reads";
-
-const loadStoredProfiles = () => {
-  if (typeof window === "undefined") return [] as StoredProfile[];
-  const raw = localStorage.getItem(profileStorageKey);
-  if (!raw) return [] as StoredProfile[];
-  try {
-    return JSON.parse(raw) as StoredProfile[];
-  } catch {
-    return [] as StoredProfile[];
-  }
-};
-
-const loadStoredChats = () => {
-  if (typeof window === "undefined") return [] as StoredProfessionalChat[];
-  const raw = localStorage.getItem(chatStorageKey);
-  if (!raw) return [] as StoredProfessionalChat[];
-  try {
-    return JSON.parse(raw) as StoredProfessionalChat[];
-  } catch {
-    return [] as StoredProfessionalChat[];
-  }
-};
-
-const saveStoredChats = (chats: StoredProfessionalChat[]) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(chatStorageKey, JSON.stringify(chats));
-  window.dispatchEvent(new Event("professional-chats:changed"));
-};
-
-const saveChatRead = (userId: string, chatId: string) => {
-  if (typeof window === "undefined") return;
-  const raw = localStorage.getItem(professionalChatReadStorageKey);
-  let parsed: Record<string, Record<string, string>> = {};
-  try {
-    parsed = raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {};
-  } catch {
-    parsed = {};
-  }
-  parsed[userId] = { ...(parsed[userId] ?? {}), [chatId]: new Date().toISOString() };
-  localStorage.setItem(professionalChatReadStorageKey, JSON.stringify(parsed));
-  window.dispatchEvent(new Event("professional-reads:changed"));
-};
-
-const formatTime = (value: Date | string) =>
+const formatTime = (value: string) =>
   new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const normalizeMessages = (items: Message[]) =>
-  items.map((message) => ({
-    ...message,
-    createdAt: message.createdAt ?? new Date().toISOString(),
-    time: message.time ?? formatTime(message.createdAt ?? new Date()),
-  }));
+const resolveKind = (type: string) => {
+  if (type.startsWith("image/")) return "image" as const;
+  if (type.startsWith("video/")) return "video" as const;
+  if (type.startsWith("audio/")) return "audio" as const;
+  return "file" as const;
+};
+
+const uploadChatFile = async (file: Blob, filename: string): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file, filename);
+  const response = await fetch(apiPath("/api/uploads"), {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error("Falha ao enviar arquivo.");
+  }
+  const result = (await response.json()) as { url: string };
+  return result.url;
+};
 
 const ChatProfissional = () => {
   const { id } = useParams();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const queryClient = useQueryClient();
   const [newMessage, setNewMessage] = useState("");
   const [showDealModal, setShowDealModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [chatMeta, setChatMeta] = useState({ name: "Profissional", specialty: "" });
-  const [chatInfo, setChatInfo] = useState<StoredProfessionalChat | null>(null);
+  const [initError, setInitError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
   const { user: authUser, loading: authLoading } = useAuth();
-
-  const clientId = authUser?.id ?? authUser?.email ?? "guest";
-  const clientName = sanitizeDisplayName(authUser?.name ?? "Usuario", "Usuario");
+  const clientId = authUser?.id ?? "guest";
 
   useEffect(() => {
     if (!id || !authUser) return;
-    const profiles = loadStoredProfiles();
-    const profile = profiles.find((item) => item.id === id);
-    const professionalName = sanitizeDisplayName(profile?.name ?? "Profissional", "Profissional");
-    const professionalId = id;
-    const storedChats = loadStoredChats();
-    const existingOpenChats = storedChats.filter(
-      (chat) =>
-        chat.professionalId === professionalId &&
-        chat.clientId === clientId &&
-        chat.dealStatus !== "closed",
-    );
-    const sortedOpenChats = [...existingOpenChats].sort((a, b) => {
-      const aTime = new Date(a.createdAt ?? 0).getTime();
-      const bTime = new Date(b.createdAt ?? 0).getTime();
-      return bTime - aTime;
-    });
-    const currentChat = sortedOpenChats[0] ?? null;
-    const nextChatId = currentChat?.id ?? `pro-${professionalId}-${clientId}-${Date.now()}`;
+    let active = true;
+    fetch(apiPath("/api/professional-chats"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ professionalId: id }),
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+      .then((chat: ApiProfessionalChat) => {
+        if (active) setChatId(chat.id);
+      })
+      .catch(() => {
+        if (active) setInitError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [authUser, id]);
 
-    const existingIndex = storedChats.findIndex((chat) => chat.id === nextChatId);
-    if (existingIndex >= 0) {
-      const existing = storedChats[existingIndex];
-      const updated = {
-        ...existing,
-        professionalName,
-        clientName,
-        dealStatus: existing.dealStatus ?? "open",
-        closePendingFrom: existing.closePendingFrom ?? null,
-        messages: normalizeMessages(existing.messages ?? []),
-      };
-      storedChats[existingIndex] = updated;
-      saveStoredChats(storedChats);
-      setMessages(updated.messages ?? []);
-      setChatInfo(updated);
-    } else {
-      const newChat: StoredProfessionalChat = {
-        id: nextChatId,
-        professionalId,
-        professionalName,
-        clientId,
-        clientName,
-        dealStatus: "open",
-        closePendingFrom: null,
-        createdAt: new Date().toISOString(),
-        messages: [],
-      };
-      storedChats.push(newChat);
-      saveStoredChats(storedChats);
-      setMessages([]);
-      setChatInfo(newChat);
-    }
+  const { data: chat } = useQuery({
+    queryKey: ["professional-chat", chatId],
+    queryFn: async () => {
+      const response = await fetch(apiPath(`/api/professional-chats/${chatId}`), { credentials: "include" });
+      if (!response.ok) throw new Error("Falha ao carregar chat.");
+      return (await response.json()) as ApiProfessionalChat;
+    },
+    enabled: !!chatId,
+    refetchInterval: 3000,
+  });
 
-    setChatMeta({ name: professionalName, specialty: profile?.specialty ?? "" });
-    setChatId(nextChatId);
-  }, [authUser, clientId, clientName, id]);
+  const messages = chat?.messages ?? [];
+  const refetchChat = () => queryClient.invalidateQueries({ queryKey: ["professional-chat", chatId] });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!chatId) return;
-    saveChatRead(clientId, chatId);
-  }, [chatId, clientId, messages]);
-
-  useEffect(() => {
-    if (!chatId) return;
-    const syncChat = () => {
-      const storedChats = loadStoredChats();
-      const current = storedChats.find((chat) => chat.id === chatId);
-      if (!current) return;
-      setMessages(normalizeMessages(current.messages ?? []));
-      setChatInfo(current);
-    };
-    window.addEventListener("storage", syncChat);
-    window.addEventListener("professional-chats:changed", syncChat as EventListener);
-    return () => {
-      window.removeEventListener("storage", syncChat);
-      window.removeEventListener("professional-chats:changed", syncChat as EventListener);
-    };
-  }, [chatId]);
-
-  const appendMessages = (newMessages: Message[]) => {
-    if (!chatId) return;
-    setMessages((prev) => {
-      const next = [...prev, ...newMessages];
-      const storedChats = loadStoredChats();
-      const index = storedChats.findIndex((chat) => chat.id === chatId);
-      if (index >= 0) {
-        storedChats[index] = {
-          ...storedChats[index],
-          messages: normalizeMessages(next),
-        };
-        saveStoredChats(storedChats);
-        setChatInfo(storedChats[index]);
-      }
-      return next;
+    fetch(apiPath(`/api/professional-chats/${chatId}/read`), { method: "POST", credentials: "include" }).catch(() => {
+      // marcar como lido nao e critico o suficiente para bloquear a UI em caso de falha
     });
-  };
+  }, [chatId, messages.length]);
 
-  const requestCloseDeal = () => {
+  const postMessage = async (body: Record<string, unknown>) => {
     if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const index = storedChats.findIndex((chat) => chat.id === chatId);
-    if (index < 0) return;
-    const now = new Date();
-    storedChats[index] = {
-      ...storedChats[index],
-      closePendingFrom: clientId,
-      messages: normalizeMessages([
-        ...(storedChats[index].messages ?? []),
-        {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: clientId,
-          createdAt: now.toISOString(),
-          time: formatTime(now),
-          kind: "text",
-          text: "Solicitação de fechamento enviada. Aguardando confirmação da outra parte.",
-        },
-      ]),
-    };
-    saveStoredChats(storedChats);
-    setShowDealModal(false);
+    try {
+      await fetch(apiPath(`/api/professional-chats/${chatId}/messages`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      refetchChat();
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+    }
   };
 
-  const acceptCloseDeal = () => {
+  const postClose = (action: "request" | "accept" | "reject") => {
     if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const index = storedChats.findIndex((chat) => chat.id === chatId);
-    if (index < 0) return;
-    const now = new Date();
-    const closedChat = {
-      ...storedChats[index],
-      closePendingFrom: null,
-      dealStatus: "closed",
-      messages: normalizeMessages([
-        ...(storedChats[index].messages ?? []),
-        {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: clientId,
-          createdAt: now.toISOString(),
-          time: formatTime(now),
-          kind: "text",
-          text: "Negócio fechado.",
-        },
-      ]),
-    };
-    const newChat: StoredProfessionalChat = {
-      ...storedChats[index],
-      id: `pro-${storedChats[index].professionalId}-${storedChats[index].clientId}-${Date.now()}`,
-      closePendingFrom: null,
-      dealStatus: "open",
-      createdAt: new Date().toISOString(),
-      messages: [],
-    };
-    storedChats.splice(index, 1, closedChat, newChat);
-    saveStoredChats(storedChats);
+    fetch(apiPath(`/api/professional-chats/${chatId}/close`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action }),
+    })
+      .then(refetchChat)
+      .catch((error) => console.error("Erro ao atualizar fechamento:", error));
   };
-
-  const rejectCloseDeal = () => {
-    if (!chatId) return;
-    const storedChats = loadStoredChats();
-    const index = storedChats.findIndex((chat) => chat.id === chatId);
-    if (index < 0) return;
-    const now = new Date();
-    storedChats[index] = {
-      ...storedChats[index],
-      closePendingFrom: null,
-      messages: normalizeMessages([
-        ...(storedChats[index].messages ?? []),
-        {
-          id: `${Date.now()}-deal`,
-          sender: "me",
-          senderId: clientId,
-          createdAt: now.toISOString(),
-          time: formatTime(now),
-          kind: "text",
-          text: "Fechamento recusado.",
-        },
-      ]),
-    };
-    saveStoredChats(storedChats);
-  };
-
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !chatId) return;
-    const now = new Date();
-    const message: Message = {
-      id: Date.now().toString(),
-      sender: "me",
-      senderId: clientId,
-      text: newMessage,
-      createdAt: now.toISOString(),
-      time: formatTime(now),
-      kind: "text",
-    };
-    appendMessages([message]);
+    postMessage({ text: newMessage, kind: "text" });
     setNewMessage("");
   };
 
   const handleConfirmDeal = () => {
-    requestCloseDeal();
+    postClose("request");
+    setShowDealModal(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -342,33 +173,20 @@ const ChatProfissional = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!chatId) return;
     const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
     if (files.length === 0) return;
 
-    const now = new Date();
-    const resolveKind = (type: string) => {
-      if (type.startsWith("image/")) return "image";
-      if (type.startsWith("video/")) return "video";
-      if (type.startsWith("audio/")) return "audio";
-      return "file";
-    };
-
-    const newAttachments = files.map((file) => ({
-      id: `${Date.now()}-${file.name}`,
-      sender: "me" as const,
-      senderId: clientId,
-      createdAt: now.toISOString(),
-      time: formatTime(now),
-      kind: resolveKind(file.type),
-      fileName: file.name,
-      fileUrl: URL.createObjectURL(file),
-      fileType: file.type,
-    }));
-
-    appendMessages(newAttachments);
-    event.target.value = "";
+    for (const file of files) {
+      try {
+        const url = await uploadChatFile(file, file.name);
+        await postMessage({ kind: resolveKind(file.type), fileName: file.name, fileUrl: url, fileType: file.type });
+      } catch (error) {
+        console.error("Erro ao enviar anexo:", error);
+      }
+    }
   };
 
   const startRecording = async () => {
@@ -384,24 +202,14 @@ const ChatProfissional = () => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        const now = new Date();
-
-        appendMessages([
-          {
-            id: `${Date.now()}-audio`,
-            sender: "me",
-            senderId: clientId,
-            createdAt: now.toISOString(),
-            time: formatTime(now),
-            kind: "audio",
-            fileName: "?udio",
-            fileUrl: url,
-          },
-        ]);
-
+        try {
+          const url = await uploadChatFile(blob, "audio.webm");
+          await postMessage({ kind: "audio", fileName: "Áudio", fileUrl: url, fileType: "audio/webm" });
+        } catch (error) {
+          console.error("Erro ao enviar audio:", error);
+        }
         audioChunksRef.current = [];
         stream.getTracks().forEach((track) => track.stop());
       };
@@ -443,6 +251,20 @@ const ChatProfissional = () => {
     );
   }
 
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Profissional não encontrado</h2>
+          <p className="text-sm text-muted-foreground">Este perfil não está mais disponível.</p>
+          <Link to="/profissionais">
+            <Button variant="secondary">Ver outros profissionais</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
@@ -456,30 +278,30 @@ const ChatProfissional = () => {
           </Link>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-semibold">
-              {chatMeta.name.charAt(0).toUpperCase()}
+              {(chat?.professionalName ?? "Profissional").charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="font-semibold text-foreground">{chatMeta.name}</h2>
-              <p className="text-xs text-muted-foreground">{chatMeta.specialty || "Profissional"}</p>
+              <h2 className="font-semibold text-foreground">{chat?.professionalName ?? "Profissional"}</h2>
+              <p className="text-xs text-muted-foreground">Profissional</p>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {chatInfo?.closePendingFrom && (
+          {chat?.closePendingFrom && (
             <span className="text-xs text-muted-foreground">Fechamento em andamento</span>
           )}
-          {chatInfo?.dealStatus !== "closed" &&
-            (chatInfo?.closePendingFrom ? (
-              chatInfo.closePendingFrom === clientId ? (
+          {chat?.dealStatus !== "closed" &&
+            (chat?.closePendingFrom ? (
+              chat.closePendingFrom === clientId ? (
                 <Button variant="outline" size="sm" disabled>
                   Aguardando confirmação
                 </Button>
               ) : (
                 <>
-                  <Button variant="secondary" size="sm" onClick={acceptCloseDeal}>
+                  <Button variant="secondary" size="sm" onClick={() => postClose("accept")}>
                     Aceitar fechamento
                   </Button>
-                  <Button variant="outline" size="sm" onClick={rejectCloseDeal}>
+                  <Button variant="outline" size="sm" onClick={() => postClose("reject")}>
                     Recusar
                   </Button>
                 </>
@@ -505,7 +327,7 @@ const ChatProfissional = () => {
           </div>
         )}
         {messages.map((message) => {
-          const isMe = message.senderId ? message.senderId === clientId : message.sender === "me";
+          const isMe = message.senderId === clientId;
           return (
             <div key={message.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
               <div
@@ -517,7 +339,7 @@ const ChatProfissional = () => {
               >
                 <MediaMessage message={message} isMe={isMe} />
                 <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                  {message.time}
+                  {formatTime(message.createdAt)}
                 </p>
               </div>
             </div>
@@ -570,7 +392,7 @@ const ChatProfissional = () => {
           <DialogHeader>
             <DialogTitle className="text-xl">Fechar Negócio</DialogTitle>
             <DialogDescription className="text-base">
-              Você deseja oficializar o serviço com <strong>{chatMeta.name}</strong>?
+              Você deseja oficializar o serviço com <strong>{chat?.professionalName ?? "Profissional"}</strong>?
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">

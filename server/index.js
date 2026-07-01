@@ -11,6 +11,7 @@ import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from "./auth.j
 import { upload, uploadsDir } from "./uploads.js";
 import { createAnnouncementsRouter } from "./announcements.js";
 import { createChatsRouter } from "./chats.js";
+import { createProfessionalChatsRouter } from "./professional-chats.js";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -29,6 +30,7 @@ app.use(cookieParser());
 app.use("/uploads", express.static(uploadsDir));
 app.use("/api", createAnnouncementsRouter({ prisma, requireAuth }));
 app.use("/api", createChatsRouter({ prisma, requireAuth }));
+app.use("/api", createProfessionalChatsRouter({ prisma, requireAuth }));
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

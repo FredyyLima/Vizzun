@@ -17,7 +17,7 @@ const CTASection = () => {
             Pronto para começar seu projeto?
           </h2>
           <p className="text-lg md:text-xl text-primary-foreground/80 mb-8">
-            Junte-se a milhares de clientes e profissionais que já utilizam o ConstruLink para realizar projetos incríveis.
+            Junte-se a milhares de clientes e profissionais que já utilizam o Vizzun para realizar projetos incríveis.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/cadastro">

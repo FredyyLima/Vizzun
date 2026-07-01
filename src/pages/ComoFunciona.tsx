@@ -51,7 +51,7 @@ const ComoFunciona = () => {
         <section className="py-16 md:py-24 bg-gradient-subtle">
           <div className="container mx-auto px-4 text-center">
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
-              Como o ConstruLink Funciona
+              Como o Vizzun Funciona
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
               Conectamos clientes e profissionais da construção de forma simples, segura e eficiente.
@@ -73,7 +73,7 @@ const ComoFunciona = () => {
           <div className="container mx-auto px-4">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-                Por que escolher o ConstruLink?
+                Por que escolher o Vizzun?
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Oferecemos as melhores ferramentas para conectar você ao profissional ideal
@@ -140,7 +140,7 @@ const ComoFunciona = () => {
               Pronto para começar?
             </h2>
             <p className="text-xl text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
-              Junte-se a milhares de clientes e profissionais que já utilizam o ConstruLink.
+              Junte-se a milhares de clientes e profissionais que já utilizam o Vizzun.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/cadastro">

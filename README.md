@@ -120,3 +120,9 @@ Antes de subir em produção:
 - Rode `npm run build` para gerar `dist/` (ou deixe o pipeline de deploy fazer isso).
 - Garanta que o volume/diretório `uploads/` seja persistente entre deploys, já que arquivos
   enviados pelos usuários são salvos em disco local pela API.
+- Atualize o domínio de exemplo (`https://www.vizzun.com.br`) em `public/sitemap.xml` e
+  `public/robots.txt` para o domínio real de produção.
+- O envio de email de recuperação de senha (`/api/forgot-password`) ainda não está integrado a
+  um provedor real — hoje o link de redefinição é apenas logado no servidor. Antes de usar em
+  produção, integrar um provedor (Resend, SMTP, etc.) em `server/index.js` e remover o campo
+  `resetUrl` da resposta da API.

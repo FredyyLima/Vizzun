@@ -9,6 +9,7 @@ import { PrismaClient } from "@prisma/client";
 import { onlyDigits, isValidCNPJ, isValidCPF, isValidPhone } from "./validators.js";
 import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from "./auth.js";
 import { upload, uploadsDir } from "./uploads.js";
+import { createAnnouncementsRouter } from "./announcements.js";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -25,6 +26,7 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/uploads", express.static(uploadsDir));
+app.use("/api", createAnnouncementsRouter({ prisma, requireAuth }));
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

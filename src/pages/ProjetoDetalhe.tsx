@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { useAuth } from "@/hooks/use-auth";
+import { apiPath } from "@/lib/api";
 
 const projectImages = [
   "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&h=600&fit=crop",
@@ -85,16 +86,23 @@ const fallbackGallery: GalleryItem[] = projectImages.map((url) => ({
 
 const fallbackAttachmentItems: AttachmentItem[] = fallbackAttachments;
 
-const announcementStorageKey = "site_announcements";
-
-const loadStoredAnnouncements = () => {
-  if (typeof window === "undefined") return [] as StoredAnnouncement[];
-  const raw = localStorage.getItem(announcementStorageKey);
-  if (!raw) return [] as StoredAnnouncement[];
+const fetchAnnouncement = async (id: string): Promise<StoredAnnouncement | null> => {
   try {
-    return JSON.parse(raw) as StoredAnnouncement[];
+    const response = await fetch(apiPath(`/api/announcements/${id}`));
+    if (!response.ok) return null;
+    return (await response.json()) as StoredAnnouncement;
   } catch {
-    return [] as StoredAnnouncement[];
+    return null;
+  }
+};
+
+const fetchOwnerAnnouncements = async (ownerId: string): Promise<StoredAnnouncement[]> => {
+  try {
+    const response = await fetch(apiPath(`/api/announcements?ownerId=${encodeURIComponent(ownerId)}`));
+    if (!response.ok) return [];
+    return (await response.json()) as StoredAnnouncement[];
+  } catch {
+    return [];
   }
 };
 
@@ -126,24 +134,34 @@ const ProjetoDetalhe = () => {
   const [currentMedia, setCurrentMedia] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
-  const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>(() => loadStoredAnnouncements());
+  const [announcement, setAnnouncement] = useState<StoredAnnouncement | null>(null);
+  const [ownerAnnouncements, setOwnerAnnouncements] = useState<StoredAnnouncement[]>([]);
   const { user: authUser } = useAuth();
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => setStoredAnnouncements(loadStoredAnnouncements());
-    window.addEventListener("storage", reload);
-    window.addEventListener("announcements:changed", reload as EventListener);
+    if (!id) return;
+    let active = true;
+    fetchAnnouncement(id).then((item) => {
+      if (active) setAnnouncement(item);
+    });
     return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("announcements:changed", reload as EventListener);
+      active = false;
     };
-  }, []);
+  }, [id]);
 
-  const announcement = useMemo(
-    () => storedAnnouncements.find((item) => item.id === id) ?? null,
-    [storedAnnouncements, id],
-  );
+  useEffect(() => {
+    if (!announcement?.ownerId) {
+      setOwnerAnnouncements([]);
+      return;
+    }
+    let active = true;
+    fetchOwnerAnnouncements(announcement.ownerId).then((items) => {
+      if (active) setOwnerAnnouncements(items);
+    });
+    return () => {
+      active = false;
+    };
+  }, [announcement?.ownerId]);
 
   const isOwner =
     !!announcement &&
@@ -153,11 +171,6 @@ const ProjetoDetalhe = () => {
 
   const ownerStats = useMemo(() => {
     if (!announcement) return null;
-    const ownerKey = announcement.ownerId ?? announcement.ownerEmail ?? announcement.ownerName ?? announcement.id;
-    const ownerAnnouncements = storedAnnouncements.filter((item) => {
-      const key = item.ownerId ?? item.ownerEmail ?? item.ownerName ?? item.id;
-      return key === ownerKey;
-    });
     const dates = ownerAnnouncements
       .map((item) => new Date(item.createdAt).getTime())
       .filter((value) => !Number.isNaN(value));
@@ -167,7 +180,7 @@ const ProjetoDetalhe = () => {
       memberSince: `Membro desde ${memberSinceYear}`,
       projectsPublished: ownerAnnouncements.length,
     };
-  }, [announcement, storedAnnouncements]);
+  }, [announcement, ownerAnnouncements]);
 
   const detail: ProjectDetail = useMemo(() => {
     if (announcement) {

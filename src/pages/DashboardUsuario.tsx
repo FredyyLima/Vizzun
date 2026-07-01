@@ -198,27 +198,11 @@ const brazilStates = [
   "TO",
 ];
 
-const announcementStorageKey = "site_announcements";
 const chatStorageKey = "site_chats";
 const profileStorageKey = "professional_profiles";
 const professionalChatStorageKey = "professional_chats";
 const chatReadStorageKey = "chat_reads";
 const professionalChatReadStorageKey = "professional_chat_reads";
-
-const loadStoredAnnouncements = () => {
-  if (typeof window === "undefined") return [] as Announcement[];
-  const raw = localStorage.getItem(announcementStorageKey);
-  if (!raw) return [] as Announcement[];
-  try {
-    const parsed = JSON.parse(raw) as Announcement[];
-    return parsed.map((item) => ({
-      ...item,
-      status: item.status ?? "Ativo",
-    }));
-  } catch {
-    return [] as Announcement[];
-  }
-};
 
 const loadStoredChats = () => {
   if (typeof window === "undefined") return [] as StoredChat[];
@@ -416,7 +400,7 @@ const DashboardUsuario = () => {
   );
   const [chatReadMap, setChatReadMap] = useState<Record<string, string>>({});
   const [professionalReadMap, setProfessionalReadMap] = useState<Record<string, string>>({});
-  const [announcements, setAnnouncements] = useState<Announcement[]>(() => loadStoredAnnouncements());
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [titleValue, setTitleValue] = useState("");
   const [categoryValue, setCategoryValue] = useState("");
   const [descriptionValue, setDescriptionValue] = useState("");
@@ -592,17 +576,23 @@ const DashboardUsuario = () => {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => {
-      setAnnouncements(loadStoredAnnouncements());
-    };
-    window.addEventListener("storage", reload);
-    window.addEventListener("announcements:changed", reload as EventListener);
+    if (!authUser?.id) {
+      setAnnouncements([]);
+      return;
+    }
+    let active = true;
+    fetch(apiPath("/api/announcements/me"), { credentials: "include" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((items) => {
+        if (active) setAnnouncements(items as Announcement[]);
+      })
+      .catch(() => {
+        if (active) setAnnouncements([]);
+      });
     return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("announcements:changed", reload as EventListener);
+      active = false;
     };
-  }, []);
+  }, [authUser?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -881,11 +871,21 @@ const DashboardUsuario = () => {
     }
   };
 
-  const updateAnnouncementDealStatus = (announcementId: string, status: "pending" | "closed") => {
-    const nextAnnouncements = announcements.map((item) =>
-      item.id === announcementId ? { ...item, dealStatus: status } : item,
-    );
-    persistAnnouncements(nextAnnouncements);
+  const updateAnnouncementDealStatus = async (announcementId: string, status: "pending" | "closed" | "none") => {
+    const apiValue = status === "pending" ? "PENDING" : status === "closed" ? "CLOSED" : "NONE";
+    try {
+      const response = await fetch(apiPath(`/api/announcements/${announcementId}/deal`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ dealStatus: apiValue }),
+      });
+      if (!response.ok) return;
+      const updated = (await response.json()) as Announcement;
+      setAnnouncements((prev) => prev.map((item) => (item.id === announcementId ? updated : item)));
+    } catch (error) {
+      console.error("Erro ao atualizar negocio do anuncio:", error);
+    }
   };
 
   const handleSaveProfessionalProfile = () => {
@@ -1162,10 +1162,7 @@ const DashboardUsuario = () => {
     updateStoredChats(nextChats);
     const chat = storedChats.find((item) => item.id === rejectDealChatId);
     if (chat?.projectId) {
-      const nextAnnouncements = announcements.map((item) =>
-        item.id === chat.projectId ? { ...item, dealStatus: undefined } : item,
-      );
-      persistAnnouncements(nextAnnouncements);
+      updateAnnouncementDealStatus(chat.projectId, "none");
     }
     setShowRejectDealModal(false);
     setRejectDealChatId(null);
@@ -1430,81 +1427,56 @@ const DashboardUsuario = () => {
     setIsEditingAnnouncement(false);
   };
 
-  const persistAnnouncements = (nextAnnouncements: Announcement[]) => {
-    setAnnouncements(nextAnnouncements);
-    let saved = false;
-    try {
-      localStorage.setItem(announcementStorageKey, JSON.stringify(nextAnnouncements));
-      saved = true;
-    } catch (error) {
-      console.error("Erro ao salvar anuncios no armazenamento local:", error);
-      try {
-        const slimAnnouncements = nextAnnouncements.map((item) => ({
-          ...item,
-          attachments: item.attachments?.map((att) => ({
-            id: att.id,
-            name: att.name,
-            type: att.type,
-            isPrimary: att.isPrimary,
-          })),
-          primaryImageUrl: item.primaryImageUrl ?? null,
-        }));
-        localStorage.setItem(announcementStorageKey, JSON.stringify(slimAnnouncements));
-        saved = true;
-        toast("Anúncio publicado, mas alguns anexos não puderam ser salvos.");
-      } catch (innerError) {
-        console.error("Erro ao salvar anuncios reduzidos:", innerError);
-        toast.error("Não foi possível salvar o anúncio no armazenamento local.");
-      }
-    }
-    if (saved) {
-      window.dispatchEvent(new Event("announcements:changed"));
-    }
-  };
-
-  const publishAnnouncement = () => {
-    const now = new Date().toISOString();
+  const publishAnnouncement = async () => {
     const budget = budgetValue.trim() ? budgetValue.trim() : "A Combinar";
     const deadline = deadlineValue.trim() ? deadlineValue.trim() : "A Combinar";
-    const roleLabel = authUser?.role === "PROFESSIONAL" ? "Profissional" : "Cliente";
-    const ownerDisplayName = getDisplayName(authUser, "Cliente");
 
-    const newAnnouncement: Announcement = {
-      id: `ann-${Date.now()}`,
-      ownerId,
-      ownerName: ownerDisplayName,
-      ownerEmail: authUser?.email ?? null,
-      role: roleLabel,
-      title: titleValue.trim(),
-      category: categoryValue.trim(),
-      description: descriptionValue.trim(),
-      city: cityValue.trim(),
-      state: stateValue.trim(),
-      budget,
-      deadline,
-      status: "Ativo",
-      createdAt: now,
-      proposals: 0,
-      attachments: announcementAttachments,
-      primaryImageUrl: getPrimaryImageUrl(null),
-    };
+    try {
+      const response = await fetch(apiPath("/api/announcements"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title: titleValue.trim(),
+          category: categoryValue.trim(),
+          description: descriptionValue.trim(),
+          city: cityValue.trim(),
+          state: stateValue.trim(),
+          budget,
+          deadline,
+          primaryImageUrl: getPrimaryImageUrl(null),
+          attachments: announcementAttachments.map((att) => ({
+            name: att.name,
+            type: att.type,
+            url: att.url,
+            isPrimary: att.isPrimary,
+          })),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(result?.message ?? "Não foi possível publicar o anúncio.");
+        return;
+      }
 
-    const nextAnnouncements = [newAnnouncement, ...announcements];
-    persistAnnouncements(nextAnnouncements);
+      setAnnouncements((prev) => [result as Announcement, ...prev]);
+      setTitleValue("");
+      setCategoryValue("");
+      setDescriptionValue("");
+      setBudgetValue("");
+      setDeadlineValue("");
+      setCityValue("");
+      setStateValue("");
+      setAnnouncementAttachments([]);
+      setFormErrors({});
 
-    setTitleValue("");
-    setCategoryValue("");
-    setDescriptionValue("");
-    setBudgetValue("");
-    setDeadlineValue("");
-    setCityValue("");
-    setStateValue("");
-    setAnnouncementAttachments([]);
-    setFormErrors({});
-
-    toast.success("Anúncio publicado com sucesso!");
-    setActiveSection("anuncios");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+      toast.success("Anúncio publicado com sucesso!");
+      setActiveSection("anuncios");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("Erro ao publicar anuncio:", error);
+      toast.error("Não foi possível publicar o anúncio.");
+    }
   };
 
   const handleViewAnnouncement = (id: string) => {
@@ -1591,6 +1563,33 @@ const DashboardUsuario = () => {
       reader.readAsDataURL(file);
     });
 
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [header, base64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  };
+
+  const uploadFile = async (file: Blob, filename: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append("file", file, filename);
+    const response = await fetch(apiPath("/api/uploads"), {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    if (!response.ok) {
+      throw new Error("Falha ao enviar arquivo.");
+    }
+    const result = (await response.json()) as { url: string };
+    return result.url;
+  };
+
   const handleAnnouncementFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
@@ -1599,7 +1598,9 @@ const DashboardUsuario = () => {
       const attachments = await Promise.all(
         files.map(async (file) => {
           const isImage = file.type.startsWith("image/");
-          const url = isImage ? await resizeImage(file) : URL.createObjectURL(file);
+          const url = isImage
+            ? await uploadFile(dataUrlToBlob(await resizeImage(file)), file.name)
+            : await uploadFile(file, file.name);
           return {
             id: `att-${Date.now()}-${file.name}`,
             name: file.name,
@@ -1691,52 +1692,89 @@ const DashboardUsuario = () => {
     setDragOverAttachmentId(null);
   };
 
-  const handleSaveAnnouncement = () => {
+  const handleSaveAnnouncement = async () => {
     if (!selectedAnnouncementId || !originalAnnouncement) return;
     if (!validateAnnouncement()) return;
 
-    const updatedAnnouncement: Announcement = {
-      ...originalAnnouncement,
-      title: titleValue.trim(),
-      category: categoryValue.trim(),
-      description: descriptionValue.trim(),
-      city: cityValue.trim(),
-      state: stateValue.trim(),
-      budget: normalizedBudget,
-      deadline: normalizedDeadline,
-      attachments: announcementAttachments,
-      primaryImageUrl: getPrimaryImageUrl(originalAnnouncement.primaryImageUrl),
-    };
-
-    const nextAnnouncements = announcements.map((item) =>
-      item.id === selectedAnnouncementId ? updatedAnnouncement : item,
-    );
-    persistAnnouncements(nextAnnouncements);
-    setOriginalAnnouncement(updatedAnnouncement);
-    setIsEditingAnnouncement(false);
-    toast.success("Anúncio atualizado com sucesso!");
+    try {
+      const response = await fetch(apiPath(`/api/announcements/${selectedAnnouncementId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title: titleValue.trim(),
+          category: categoryValue.trim(),
+          description: descriptionValue.trim(),
+          city: cityValue.trim(),
+          state: stateValue.trim(),
+          budget: normalizedBudget,
+          deadline: normalizedDeadline,
+          primaryImageUrl: getPrimaryImageUrl(originalAnnouncement.primaryImageUrl),
+          attachments: announcementAttachments.map((att) => ({
+            name: att.name,
+            type: att.type,
+            url: att.url,
+            isPrimary: att.isPrimary,
+          })),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(result?.message ?? "Não foi possível atualizar o anúncio.");
+        return;
+      }
+      const updated = result as Announcement;
+      setAnnouncements((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setOriginalAnnouncement(updated);
+      setIsEditingAnnouncement(false);
+      toast.success("Anúncio atualizado com sucesso!");
+    } catch (error) {
+      console.error("Erro ao atualizar anuncio:", error);
+      toast.error("Não foi possível atualizar o anúncio.");
+    }
   };
 
-  const handlePauseAnnouncement = (id: string) => {
-    const nextAnnouncements = announcements.map((item) =>
-      item.id === id ? { ...item, status: "Pausado" } : item,
-    );
-    persistAnnouncements(nextAnnouncements);
-    toast.success("Anúncio pausado.");
+  const setAnnouncementStatus = async (id: string, status: "ACTIVE" | "PAUSED") => {
+    try {
+      const response = await fetch(apiPath(`/api/announcements/${id}/status`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        toast.error("Não foi possível atualizar o anúncio.");
+        return;
+      }
+      const updated = (await response.json()) as Announcement;
+      setAnnouncements((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      toast.success(status === "PAUSED" ? "Anúncio pausado." : "Anúncio ativado.");
+    } catch (error) {
+      console.error("Erro ao atualizar status do anuncio:", error);
+      toast.error("Não foi possível atualizar o anúncio.");
+    }
   };
 
-  const handleActivateAnnouncement = (id: string) => {
-    const nextAnnouncements = announcements.map((item) =>
-      item.id === id ? { ...item, status: "Ativo" } : item,
-    );
-    persistAnnouncements(nextAnnouncements);
-    toast.success("Anúncio ativado.");
-  };
+  const handlePauseAnnouncement = (id: string) => setAnnouncementStatus(id, "PAUSED");
 
-  const handleDeleteAnnouncement = (id: string) => {
-    const nextAnnouncements = announcements.filter((item) => item.id !== id);
-    persistAnnouncements(nextAnnouncements);
-    toast.success("Anúncio excluído.");
+  const handleActivateAnnouncement = (id: string) => setAnnouncementStatus(id, "ACTIVE");
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    try {
+      const response = await fetch(apiPath(`/api/announcements/${id}`), {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok && response.status !== 204) {
+        toast.error("Não foi possível excluir o anúncio.");
+        return;
+      }
+      setAnnouncements((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Anúncio excluído.");
+    } catch (error) {
+      console.error("Erro ao excluir anuncio:", error);
+      toast.error("Não foi possível excluir o anúncio.");
+    }
   };
 
   return (

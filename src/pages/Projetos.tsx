@@ -17,6 +17,7 @@ import { SlidersHorizontal, Search, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { apiPath } from "@/lib/api";
 
 const mockProjects = [
   {
@@ -101,16 +102,13 @@ type StoredAnnouncement = {
   primaryImageUrl?: string | null;
 };
 
-const announcementStorageKey = "site_announcements";
-
-const loadStoredAnnouncements = () => {
-  if (typeof window === "undefined") return [] as StoredAnnouncement[];
-  const raw = localStorage.getItem(announcementStorageKey);
-  if (!raw) return [] as StoredAnnouncement[];
+const fetchAnnouncements = async (): Promise<StoredAnnouncement[]> => {
   try {
-    return JSON.parse(raw) as StoredAnnouncement[];
+    const response = await fetch(apiPath("/api/announcements"));
+    if (!response.ok) return [];
+    return (await response.json()) as StoredAnnouncement[];
   } catch {
-    return [] as StoredAnnouncement[];
+    return [];
   }
 };
 
@@ -144,7 +142,7 @@ const mapAnnouncementsToProjects = (announcements: StoredAnnouncement[]) =>
     }));
 const Projetos = () => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>(() => loadStoredAnnouncements());
+  const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -156,15 +154,12 @@ const Projetos = () => {
   const { user: authUser } = useAuth();
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const reload = () => {
-      setStoredAnnouncements(loadStoredAnnouncements());
-    };
-    window.addEventListener("storage", reload);
-    window.addEventListener("announcements:changed", reload as EventListener);
+    let active = true;
+    fetchAnnouncements().then((items) => {
+      if (active) setStoredAnnouncements(items);
+    });
     return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("announcements:changed", reload as EventListener);
+      active = false;
     };
   }, []);
 

@@ -33,135 +33,30 @@ import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { apiPath } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-type SectionKey = "chats" | "anunciar" | "anuncios" | "pending" | "contracts" | "profile" | "config";
-
-type ChatSummary = {
-  id: string;
-  name: string;
-  title: string;
-  lastMessage: string;
-  lastMessageAt: string;
-  lastSeenAt: string;
-  active: boolean;
-  dealStatus?: "pending" | "closed";
-  closePendingFrom?: string | null;
-  pendingDealFrom?: string | null;
-  source: "project" | "professional";
-};
-
-type ChatMessage = {
-  id: string;
-  sender: "me" | "other";
-  senderId?: string;
-  text?: string;
-  createdAt: string;
-  kind?: "text" | "file" | "audio" | "image" | "video";
-  fileName?: string;
-  fileUrl?: string;
-  fileType?: string;
-};
-
-type StoredChat = {
-  id: string;
-  projectId: string;
-  ownerId: string;
-  ownerName: string;
-  ownerEmail?: string | null;
-  participantId: string;
-  participantName: string;
-  projectTitle: string;
-  projectBudget?: string;
-  pendingDealFrom?: string | null;
-  dealStatus?: "pending" | "closed";
-  closePendingFrom?: string | null;
-  contractStatus?: "pending" | "accepted" | "rejected";
-  createdAt?: string;
-  ownerLastReadAt?: string | null;
-  participantLastReadAt?: string | null;
-  messages: ChatMessage[];
-};
-
-type StoredProfessionalChat = {
-  id: string;
-  professionalId: string;
-  professionalName: string;
-  clientId: string;
-  clientName: string;
-  dealStatus?: "open" | "closed";
-  closePendingFrom?: string | null;
-  createdAt?: string;
-  professionalLastReadAt?: string | null;
-  clientLastReadAt?: string | null;
-  messages: ChatMessage[];
-};
-
-type AnnouncementAttachment = {
-  id: string;
-  name: string;
-  type: string;
-  url?: string;
-  isPrimary?: boolean;
-};
-
-type Announcement = {
-  id: string;
-  ownerId: string;
-  ownerName?: string | null;
-  ownerEmail?: string | null;
-  role: "Cliente" | "Profissional";
-  title: string;
-  category: string;
-  description: string;
-  city: string;
-  state: string;
-  budget: string;
-  deadline: string;
-  status: "Ativo" | "Pausado";
-  dealStatus?: "pending" | "closed";
-  createdAt: string;
-  proposals: number;
-  attachments?: AnnouncementAttachment[];
-  primaryImageUrl?: string | null;
-};
-
-type ProfessionalProfile = {
-  id: string;
-  name: string;
-  avatar?: string | null;
-  specialty?: string | null;
-  bio?: string | null;
-  services?: string[];
-  cities?: string[];
-  location?: string;
-  rating?: number;
-  reviewCount?: number;
-  reviews?: { id: string; author: string; rating: number; comment: string }[];
-  verified?: boolean;
-};
-
-type UserProfile = {
-  id: string;
-  role: string;
-  personType: string;
-  name?: string | null;
-  birthDate?: string | null;
-  cpf?: string | null;
-  rg?: string | null;
-  cnpj?: string | null;
-  companyName?: string | null;
-  tradeName?: string | null;
-  contactName?: string | null;
-  contactEmail?: string | null;
-  contactPhone?: string | null;
-  contactCpf?: string | null;
-  contactRg?: string | null;
-  contactBirthDate?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  services?: string[];
-  hasCnpjCard?: boolean;
-};
+import type {
+  Announcement,
+  AnnouncementAttachment,
+  ChatMessage,
+  ChatSummary,
+  ProfessionalProfile,
+  SectionKey,
+  StoredChat,
+  StoredProfessionalChat,
+  UserProfile,
+} from "@/lib/dashboard-types";
+import {
+  brazilStates,
+  buildChatMessages,
+  buildChatSummaries,
+  buildProfessionalChatMessages,
+  buildProfessionalChatSummaries,
+  formatCnpj,
+  formatCurrency,
+  formatDayLabel,
+  formatRelativeTime,
+  formatTime,
+} from "@/lib/dashboard-formatters";
+import { dataUrlToBlob, resizeImage, uploadFile } from "@/lib/upload";
 
 const navItems: { key: SectionKey; label: string; icon: ElementType }[] = [
   { key: "chats", label: "Chat", icon: MessageSquare },
@@ -172,162 +67,6 @@ const navItems: { key: SectionKey; label: string; icon: ElementType }[] = [
   { key: "profile", label: "Perfil Profissional", icon: User },
   { key: "config", label: "Configurações", icon: Settings },
 ];
-
-const brazilStates = [
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO",
-];
-
-const buildChatPreview = (message?: ChatMessage) => {
-  if (!message) return "Sem mensagens";
-  if (message.text) return message.text;
-  if (message.fileName) return `Anexo: ${message.fileName}`;
-  if (message.kind === "audio") return "Áudio";
-  return "Mensagem";
-};
-
-
-const buildChatSummaries = (storedChats: StoredChat[], viewerId: string) =>
-  storedChats
-    .filter((chat) => chat.ownerId === viewerId || chat.participantId === viewerId)
-    .map((chat) => {
-      const lastMessage = chat.messages?.[chat.messages.length - 1];
-      const lastTimestamp = lastMessage?.createdAt ?? chat.createdAt ?? new Date().toISOString();
-      const isOwner = chat.ownerId === viewerId;
-      const displayName = sanitizeDisplayName(
-        isOwner ? chat.participantName : chat.ownerName,
-        isOwner ? "Usuario" : "Cliente",
-      );
-      const lastSeenAt = lastMessage?.createdAt ?? lastTimestamp;
-      const isActive =
-        chat.dealStatus !== "closed" && Date.now() - new Date(lastSeenAt).getTime() < 24 * 60 * 60 * 1000;
-      return {
-        id: chat.id,
-        name: displayName,
-        title: chat.projectTitle ?? "Projeto",
-        lastMessage: buildChatPreview(lastMessage),
-        lastMessageAt: lastTimestamp,
-        lastSeenAt,
-        active: isActive,
-        dealStatus: chat.dealStatus ?? undefined,
-        closePendingFrom: chat.closePendingFrom ?? null,
-        pendingDealFrom: chat.pendingDealFrom ?? null,
-        source: "project",
-      } as ChatSummary;
-    });
-
-const buildChatMessages = (storedChats: StoredChat[]) =>
-  storedChats.reduce((acc, chat) => {
-    const normalized = (chat.messages ?? []).map((message) => ({
-      ...message,
-      createdAt: message.createdAt ?? new Date().toISOString(),
-    }));
-    acc[chat.id] = normalized;
-    return acc;
-  }, {} as Record<string, ChatMessage[]>);
-
-const buildProfessionalChatSummaries = (storedChats: StoredProfessionalChat[], viewerId: string) =>
-  storedChats
-    .filter((chat) => chat.professionalId === viewerId || chat.clientId === viewerId)
-    .map((chat) => {
-      const lastMessage = chat.messages?.[chat.messages.length - 1];
-      const lastTimestamp = lastMessage?.createdAt ?? chat.createdAt ?? new Date().toISOString();
-      const isProfessional = chat.professionalId === viewerId;
-      const status = chat.dealStatus ?? "open";
-      const displayName = sanitizeDisplayName(
-        isProfessional ? chat.clientName : chat.professionalName,
-        isProfessional ? "Usuario" : "Profissional",
-      );
-      const lastSeenAt = lastMessage?.createdAt ?? lastTimestamp;
-      const isActive =
-        status !== "closed" && Date.now() - new Date(lastSeenAt).getTime() < 24 * 60 * 60 * 1000;
-      return {
-        id: chat.id,
-        name: displayName,
-        title: "Contrato profissional",
-        lastMessage: buildChatPreview(lastMessage),
-        lastMessageAt: lastTimestamp,
-        lastSeenAt,
-        active: isActive,
-        dealStatus: status === "closed" ? "closed" : undefined,
-        closePendingFrom: chat.closePendingFrom ?? null,
-        source: "professional",
-      } as ChatSummary;
-    });
-
-const buildProfessionalChatMessages = (storedChats: StoredProfessionalChat[]) =>
-  storedChats.reduce((acc, chat) => {
-    const normalized = (chat.messages ?? []).map((message) => ({
-      ...message,
-      createdAt: message.createdAt ?? new Date().toISOString(),
-    }));
-    acc[chat.id] = normalized;
-    return acc;
-  }, {} as Record<string, ChatMessage[]>);
-
-const formatTime = (value: string) =>
-  new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-const formatDayLabel = (value: string) => new Date(value).toLocaleDateString("pt-BR");
-
-const formatRelativeTime = (value: string) => {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
-  if (diffMinutes < 60) return `${diffMinutes} min`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} h`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} dia${diffDays > 1 ? "s" : ""}`;
-};
-
-const formatCurrency = (value: string) => {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  const amount = Number(digits) / 100;
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(amount);
-};
-
-const formatCnpj = (value?: string | null) => {
-  if (!value) return "";
-  const digits = value.replace(/\D/g, "").slice(0, 14);
-  const parts = [
-    digits.slice(0, 2),
-    digits.slice(2, 5),
-    digits.slice(5, 8),
-    digits.slice(8, 12),
-    digits.slice(12, 14),
-  ];
-  if (digits.length <= 2) return parts[0];
-  if (digits.length <= 5) return `${parts[0]}.${parts[1]}`;
-  if (digits.length <= 8) return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  if (digits.length <= 12) return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}`;
-  return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}-${parts[4]}`;
-};
 
 const DashboardUsuario = () => {
   const [activeSection, setActiveSection] = useState<SectionKey>("anuncios");
@@ -1318,62 +1057,6 @@ const DashboardUsuario = () => {
   const handleConfirmPublish = () => {
     setShowConfirmModal(false);
     publishAnnouncement();
-  };
-
-  const resizeImage = (file: File, maxSize = 900, quality = 0.8) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      const image = new Image();
-
-      reader.onload = () => {
-        image.onload = () => {
-          const maxDimension = Math.max(image.width, image.height);
-          const scale = maxDimension > maxSize ? maxSize / maxDimension : 1;
-          const width = Math.round(image.width * scale);
-          const height = Math.round(image.height * scale);
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const context = canvas.getContext("2d");
-          if (!context) {
-            reject(new Error("Canvas não disponível."));
-            return;
-          }
-          context.drawImage(image, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        };
-        image.onerror = () => reject(new Error("Não foi possível processar a imagem."));
-        image.src = String(reader.result);
-      };
-      reader.onerror = () => reject(new Error("Erro ao ler a imagem."));
-      reader.readAsDataURL(file);
-    });
-
-  const dataUrlToBlob = (dataUrl: string): Blob => {
-    const [header, base64] = dataUrl.split(",");
-    const mimeMatch = header.match(/data:(.*?);base64/);
-    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return new Blob([bytes], { type: mime });
-  };
-
-  const uploadFile = async (file: Blob, filename: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file, filename);
-    const response = await fetch(apiPath("/api/uploads"), {
-      method: "POST",
-      credentials: "include",
-      body: formData,
-    });
-    if (!response.ok) {
-      throw new Error("Falha ao enviar arquivo.");
-    }
-    const result = (await response.json()) as { url: string };
-    return result.url;
   };
 
   const handleAnnouncementFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {

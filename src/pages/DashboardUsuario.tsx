@@ -633,7 +633,7 @@ const DashboardUsuario = () => {
     const loadProfile = async () => {
       setConfigLoading(true);
       try {
-        const response = await fetch(apiPath(`/api/user/${authUser.id}`));
+        const response = await fetch(apiPath("/api/me"), { credentials: "include" });
         if (!response.ok) {
           throw new Error("Falha ao carregar dados do usuário.");
         }
@@ -982,9 +982,10 @@ const DashboardUsuario = () => {
 
     setConfigSaving(true);
     try {
-      const response = await fetch(apiPath(`/api/user/${authUser.id}`), {
+      const response = await fetch(apiPath("/api/me"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const result = await response.json().catch(() => null);

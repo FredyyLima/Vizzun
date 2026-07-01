@@ -1,10 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { PrismaClient } from "@prisma/client";
 import { onlyDigits, isValidCNPJ, isValidCPF, isValidPhone } from "./validators.js";
+import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from "./auth.js";
 
 const app = express();
 const prisma = new PrismaClient();
@@ -19,6 +21,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: "10mb" }));
+app.use(cookieParser());
 
 
 const isValidDate = (value) => {
@@ -245,6 +248,9 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Email ou senha invalidos." });
     }
 
+    const token = signToken(user.id);
+    setAuthCookie(res, token);
+
     return res.json({
       id: user.id,
       role: user.role,
@@ -258,6 +264,11 @@ app.post("/api/login", async (req, res) => {
     console.error(error);
     return res.status(500).json({ message: "Erro ao autenticar usuario." });
   }
+});
+
+app.post("/api/logout", (_req, res) => {
+  clearAuthCookie(res);
+  return res.json({ ok: true });
 });
 
 const updateSchema = z
@@ -307,8 +318,8 @@ const updateSchema = z
     }
   });
 
-app.get("/api/user/:id", async (req, res) => {
-  const { id } = req.params;
+app.get("/api/me", requireAuth, async (req, res) => {
+  const id = req.userId;
   try {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
@@ -342,8 +353,8 @@ app.get("/api/user/:id", async (req, res) => {
   }
 });
 
-app.put("/api/user/:id", async (req, res) => {
-  const { id } = req.params;
+app.put("/api/me", requireAuth, async (req, res) => {
+  const id = req.userId;
   if ("name" in req.body || "cpf" in req.body || "cnpj" in req.body) {
     return res.status(400).json({ message: "Nome e CPF/CNPJ nao podem ser atualizados." });
   }

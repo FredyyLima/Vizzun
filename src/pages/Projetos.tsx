@@ -16,6 +16,7 @@ import {
 import { SlidersHorizontal, Search, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { apiPath } from "@/lib/api";
 
@@ -142,7 +143,6 @@ const mapAnnouncementsToProjects = (announcements: StoredAnnouncement[]) =>
     }));
 const Projetos = () => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -153,15 +153,10 @@ const Projetos = () => {
 
   const { user: authUser } = useAuth();
 
-  useEffect(() => {
-    let active = true;
-    fetchAnnouncements().then((items) => {
-      if (active) setStoredAnnouncements(items);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data: storedAnnouncements = [] } = useQuery({
+    queryKey: ["announcements"],
+    queryFn: fetchAnnouncements,
+  });
 
   const normalizeText = (value: string) =>
     value

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { useAuth } from "@/hooks/use-auth";
 import { apiPath } from "@/lib/api";
@@ -134,34 +135,19 @@ const ProjetoDetalhe = () => {
   const [currentMedia, setCurrentMedia] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
-  const [announcement, setAnnouncement] = useState<StoredAnnouncement | null>(null);
-  const [ownerAnnouncements, setOwnerAnnouncements] = useState<StoredAnnouncement[]>([]);
   const { user: authUser } = useAuth();
 
-  useEffect(() => {
-    if (!id) return;
-    let active = true;
-    fetchAnnouncement(id).then((item) => {
-      if (active) setAnnouncement(item);
-    });
-    return () => {
-      active = false;
-    };
-  }, [id]);
+  const { data: announcement = null } = useQuery({
+    queryKey: ["announcement", id],
+    queryFn: () => fetchAnnouncement(id as string),
+    enabled: Boolean(id),
+  });
 
-  useEffect(() => {
-    if (!announcement?.ownerId) {
-      setOwnerAnnouncements([]);
-      return;
-    }
-    let active = true;
-    fetchOwnerAnnouncements(announcement.ownerId).then((items) => {
-      if (active) setOwnerAnnouncements(items);
-    });
-    return () => {
-      active = false;
-    };
-  }, [announcement?.ownerId]);
+  const { data: ownerAnnouncements = [] } = useQuery({
+    queryKey: ["announcements", "owner", announcement?.ownerId],
+    queryFn: () => fetchOwnerAnnouncements(announcement?.ownerId as string),
+    enabled: Boolean(announcement?.ownerId),
+  });
 
   const isOwner =
     !!announcement &&

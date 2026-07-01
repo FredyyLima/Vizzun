@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/pagination";
 import { SlidersHorizontal, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { apiPath } from "@/lib/api";
 
 type StoredProfile = {
@@ -48,7 +49,11 @@ const Profissionais = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [pageSize, setPageSize] = useState(15);
   const [currentPage, setCurrentPage] = useState(1);
-  const [storedProfiles, setStoredProfiles] = useState<StoredProfile[]>([]);
+
+  const { data: storedProfiles = [] } = useQuery({
+    queryKey: ["professionals"],
+    queryFn: fetchProfessionals,
+  });
 
   const handleClearFilters = () => {
     setSelectedServices([]);
@@ -59,16 +64,6 @@ const Profissionais = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedServices, selectedState, pageSize]);
-
-  useEffect(() => {
-    let active = true;
-    fetchProfessionals().then((items) => {
-      if (active) setStoredProfiles(items);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const normalizeText = (value: string) =>
     value

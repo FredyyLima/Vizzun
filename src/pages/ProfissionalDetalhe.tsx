@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Star, MapPin, CheckCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { apiPath } from "@/lib/api";
 
@@ -23,25 +23,24 @@ type StoredProfile = {
   reviews?: { id: string; author: string; rating: number; comment: string }[];
 };
 
+const fetchProfessional = async (id: string): Promise<StoredProfile | null> => {
+  try {
+    const response = await fetch(apiPath(`/api/professionals/${id}`));
+    if (!response.ok) return null;
+    return (await response.json()) as StoredProfile;
+  } catch {
+    return null;
+  }
+};
+
 const ProfissionalDetalhe = () => {
   const { id } = useParams();
-  const [stored, setStored] = useState<StoredProfile | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    let active = true;
-    fetch(apiPath(`/api/professionals/${id}`))
-      .then((response) => (response.ok ? response.json() : null))
-      .then((item) => {
-        if (active) setStored(item);
-      })
-      .catch(() => {
-        if (active) setStored(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [id]);
+  const { data: stored = null } = useQuery({
+    queryKey: ["professional", id],
+    queryFn: () => fetchProfessional(id as string),
+    enabled: Boolean(id),
+  });
 
   const profile = stored
     ? {

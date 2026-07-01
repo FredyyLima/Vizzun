@@ -1,22 +1,13 @@
 import { Menu, User, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { getDisplayName } from "@/lib/user";
-
-type AuthUser = {
-  id?: string;
-  name?: string | null;
-  email?: string;
-  role?: string;
-  personType?: string | null;
-  tradeName?: string | null;
-  companyName?: string | null;
-};
+import { useAuth } from "@/hooks/use-auth";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const { user: authUser, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -31,32 +22,8 @@ const Header = () => {
 
   const displayName = useMemo(() => getDisplayName(authUser, "Usuario"), [authUser]);
 
-  useEffect(() => {
-    const loadUser = () => {
-      const raw = localStorage.getItem("auth_user");
-      if (!raw) {
-        setAuthUser(null);
-        return;
-      }
-      try {
-        setAuthUser(JSON.parse(raw) as AuthUser);
-      } catch {
-        setAuthUser(null);
-      }
-    };
-
-    loadUser();
-    window.addEventListener("storage", loadUser);
-    window.addEventListener("auth:changed", loadUser as EventListener);
-    return () => {
-      window.removeEventListener("storage", loadUser);
-      window.removeEventListener("auth:changed", loadUser as EventListener);
-    };
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("auth_user");
-    window.dispatchEvent(new Event("auth:changed"));
+  const handleLogout = async () => {
+    await logout();
     setMobileMenuOpen(false);
     navigate("/");
   };

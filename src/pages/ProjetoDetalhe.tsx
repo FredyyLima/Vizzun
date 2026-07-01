@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
+import { useAuth } from "@/hooks/use-auth";
 
 const projectImages = [
   "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&h=600&fit=crop",
@@ -44,15 +45,6 @@ type StoredAnnouncement = {
   createdAt: string;
   attachments?: { id: string; name: string; type: string; url?: string; isPrimary?: boolean }[];
   primaryImageUrl?: string | null;
-};
-
-type AuthUser = {
-  id?: string;
-  name?: string | null;
-  email?: string;
-  personType?: string | null;
-  tradeName?: string | null;
-  companyName?: string | null;
 };
 
 type GalleryItem = {
@@ -135,16 +127,7 @@ const ProjetoDetalhe = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const [storedAnnouncements, setStoredAnnouncements] = useState<StoredAnnouncement[]>(() => loadStoredAnnouncements());
-  const authUser = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  }, []);
+  const { user: authUser } = useAuth();
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import MediaMessage from "@/components/chat/MediaMessage";
 import { Send, Paperclip, Mic, Square, Check, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { sanitizeDisplayName } from "@/lib/user";
+import { useAuth } from "@/hooks/use-auth";
 
 type Message = {
   id: string;
@@ -44,13 +45,6 @@ type StoredProfessionalChat = {
   closePendingFrom?: string | null;
   createdAt?: string;
   messages: Message[];
-};
-
-type AuthUser = {
-  id?: string;
-  name?: string | null;
-  email?: string;
-  role?: string;
 };
 
 const profileStorageKey = "professional_profiles";
@@ -123,16 +117,7 @@ const ChatProfissional = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const authUser = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  }, []);
+  const { user: authUser, loading: authLoading } = useAuth();
 
   const clientId = authUser?.id ?? authUser?.email ?? "guest";
   const clientName = sanitizeDisplayName(authUser?.name ?? "Usuario", "Usuario");
@@ -434,6 +419,10 @@ const ChatProfissional = () => {
     mediaRecorderRef.current.stop();
     setIsRecording(false);
   };
+
+  if (authLoading) {
+    return null;
+  }
 
   if (!authUser) {
     return (

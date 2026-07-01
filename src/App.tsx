@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ScrollToTop from "@/components/ScrollToTop";
+import { AuthProvider } from "@/hooks/use-auth";
 import Index from "./pages/Index";
 import Profissionais from "./pages/Profissionais";
 import Projetos from "./pages/Projetos";
@@ -21,27 +22,29 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <ScrollToTop />
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/profissionais" element={<Profissionais />} />
-          <Route path="/profissional/:id" element={<ProfissionalDetalhe />} />
-          <Route path="/projetos" element={<Projetos />} />
-          <Route path="/projeto/:id" element={<ProjetoDetalhe />} />
-          <Route path="/chat/:projectId" element={<Chat />} />
-          <Route path="/chat-profissional/:id" element={<ChatProfissional />} />
-          <Route path="/cadastro" element={<Cadastro />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard-usuario" element={<DashboardUsuario />} />
-          <Route path="/como-funciona" element={<ComoFunciona />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <ScrollToTop />
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/profissionais" element={<Profissionais />} />
+            <Route path="/profissional/:id" element={<ProfissionalDetalhe />} />
+            <Route path="/projetos" element={<Projetos />} />
+            <Route path="/projeto/:id" element={<ProjetoDetalhe />} />
+            <Route path="/chat/:projectId" element={<Chat />} />
+            <Route path="/chat-profissional/:id" element={<ChatProfissional />} />
+            <Route path="/cadastro" element={<Cadastro />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard-usuario" element={<DashboardUsuario />} />
+            <Route path="/como-funciona" element={<ComoFunciona />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

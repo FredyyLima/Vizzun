@@ -16,6 +16,7 @@ import {
 import { SlidersHorizontal, Search, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/use-auth";
 
 const mockProjects = [
   {
@@ -152,16 +153,7 @@ const Projetos = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const navigate = useNavigate();
 
-  const authUser = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as { id?: string; email?: string };
-    } catch {
-      return null;
-    }
-  }, []);
+  const { user: authUser } = useAuth();
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;

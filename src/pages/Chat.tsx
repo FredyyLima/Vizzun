@@ -8,9 +8,10 @@ import {
   Check,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Dialog,
   DialogContent,
@@ -58,16 +59,6 @@ type StoredChat = {
   contractStatus?: "pending" | "accepted" | "rejected";
   createdAt?: string;
   messages: Message[];
-};
-
-type AuthUser = {
-  id?: string;
-  name?: string | null;
-  email?: string;
-  personType?: string | null;
-  tradeName?: string | null;
-  companyName?: string | null;
-  role?: string;
 };
 
 const announcementStorageKey = "site_announcements";
@@ -156,16 +147,7 @@ const Chat = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const authUser = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  }, []);
+  const { user: authUser, loading: authLoading } = useAuth();
 
   const participantId = authUser?.id ?? authUser?.email ?? "guest";
   const participantName = getDisplayName(authUser, "Usuario");
@@ -468,6 +450,10 @@ const Chat = () => {
   const isPendingFromMe = pendingDealFrom === participantId;
   const isContractContext = new URLSearchParams(location.search).get("context") === "contract";
   const canRespondContract = isContractContext && authUser?.role === "PROFESSIONAL";
+
+  if (authLoading) {
+    return null;
+  }
 
   if (!authUser) {
     return (

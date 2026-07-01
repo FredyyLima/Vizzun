@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiPath } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalido."),
@@ -20,6 +21,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 
 const Login = () => {
   const navigate = useNavigate();
+  const { refresh } = useAuth();
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -53,8 +55,7 @@ const Login = () => {
         return;
       }
 
-      localStorage.setItem("auth_user", JSON.stringify(result));
-      window.dispatchEvent(new Event("auth:changed"));
+      await refresh();
       toast.success("Login realizado com sucesso!");
       navigate("/dashboard-usuario");
     } catch (error) {

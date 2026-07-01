@@ -31,6 +31,7 @@ import { type ElementType, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getDisplayName, sanitizeDisplayName } from "@/lib/user";
 import { apiPath } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 
 type SectionKey = "chats" | "anunciar" | "anuncios" | "pending" | "contracts" | "profile" | "config";
 
@@ -132,16 +133,6 @@ type ProfessionalProfile = {
   reviewCount?: number;
   reviews?: { id: string; author: string; rating: number; comment: string }[];
   verified?: boolean;
-};
-
-type AuthUser = {
-  id?: string;
-  name?: string | null;
-  email?: string;
-  role?: string;
-  personType?: string | null;
-  tradeName?: string | null;
-  companyName?: string | null;
 };
 
 type UserProfile = {
@@ -484,19 +475,16 @@ const DashboardUsuario = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const announcementFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const authUser = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  }, []);
+  const { user: authUser, loading: authLoading, refresh: refreshAuth } = useAuth();
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      navigate("/login");
+    }
+  }, [authLoading, authUser, navigate]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -999,17 +987,7 @@ const DashboardUsuario = () => {
       setConfigPasswordConfirm("");
       setConfigCnpjCard("");
       setConfigCnpjCardName("");
-      const storedAuth = localStorage.getItem("auth_user");
-      if (storedAuth) {
-        const nextAuth = {
-          ...JSON.parse(storedAuth),
-          email: result.email,
-          tradeName: result.tradeName,
-          companyName: result.companyName,
-        };
-        localStorage.setItem("auth_user", JSON.stringify(nextAuth));
-        window.dispatchEvent(new Event("auth:changed"));
-      }
+      await refreshAuth();
       toast.success("Dados atualizados com sucesso.");
     } catch (error) {
       toast.error("Não foi possível salvar as alterações.");

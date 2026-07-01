@@ -203,19 +203,6 @@ const brazilStates = [
   "TO",
 ];
 
-const profileStorageKey = "professional_profiles";
-
-const loadStoredProfiles = () => {
-  if (typeof window === "undefined") return [] as ProfessionalProfile[];
-  const raw = localStorage.getItem(profileStorageKey);
-  if (!raw) return [] as ProfessionalProfile[];
-  try {
-    return JSON.parse(raw) as ProfessionalProfile[];
-  } catch {
-    return [] as ProfessionalProfile[];
-  }
-};
-
 const buildChatPreview = (message?: ChatMessage) => {
   if (!message) return "Sem mensagens";
   if (message.text) return message.text;
@@ -546,16 +533,25 @@ const DashboardUsuario = () => {
   }, [authUser?.id]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const profiles = loadStoredProfiles();
-    const profile = profiles.find((item) => item.id === ownerId);
-    if (!profile) return;
-    setProfileAvatar(profile.avatar ?? "");
-    setProfileSpecialty(profile.specialty ?? "");
-    setProfileBio(profile.bio ?? "");
-    setProfileServices((profile.services ?? []).join(", "));
-    setProfileCities((profile.cities ?? []).join(", "));
-  }, [ownerId]);
+    if (!authUser?.id || authUser.role !== "PROFESSIONAL") return;
+    let active = true;
+    fetch(apiPath(`/api/professionals/${authUser.id}`))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((profile: ProfessionalProfile | null) => {
+        if (!active || !profile) return;
+        setProfileAvatar(profile.avatar ?? "");
+        setProfileSpecialty(profile.specialty ?? "");
+        setProfileBio(profile.bio ?? "");
+        setProfileServices((profile.services ?? []).join(", "));
+        setProfileCities((profile.cities ?? []).join(", "));
+      })
+      .catch(() => {
+        // sem perfil ainda cadastrado - formulario fica em branco, comportamento esperado
+      });
+    return () => {
+      active = false;
+    };
+  }, [authUser?.id, authUser?.role]);
 
   useEffect(() => {
     if (!authUser?.id) return;
@@ -845,9 +841,8 @@ const DashboardUsuario = () => {
     refetchProfessionalChats();
   };
 
-  const handleSaveProfessionalProfile = () => {
+  const handleSaveProfessionalProfile = async () => {
     if (!ownerId) return;
-    const profiles = loadStoredProfiles();
     const services = profileServices
       .split(",")
       .map((item) => item.trim())
@@ -857,28 +852,24 @@ const DashboardUsuario = () => {
       .map((item) => item.trim())
       .filter(Boolean);
 
-    const nextProfile: ProfessionalProfile = {
-      id: ownerId,
-      name: ownerDisplayName,
-      avatar: profileAvatar.trim() || null,
-      specialty: profileSpecialty.trim() || null,
-      bio: profileBio.trim() || null,
-      services,
-      cities,
-      location: cities[0] ?? "",
-      rating: 0,
-      reviewCount: 0,
-      reviews: [],
-      verified: true,
-    };
-
-    const nextProfiles = profiles.some((item) => item.id === ownerId)
-      ? profiles.map((item) => (item.id === ownerId ? nextProfile : item))
-      : [nextProfile, ...profiles];
-
     try {
-      localStorage.setItem(profileStorageKey, JSON.stringify(nextProfiles));
-      window.dispatchEvent(new Event("profiles:changed"));
+      const response = await fetch(apiPath("/api/me/professional-profile"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          avatar: profileAvatar.trim() || null,
+          specialty: profileSpecialty.trim() || null,
+          bio: profileBio.trim() || null,
+          services,
+          cities,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(result?.message ?? "Não foi possível salvar o perfil profissional.");
+        return;
+      }
       toast.success("Perfil profissional atualizado.");
     } catch (error) {
       console.error("Erro ao salvar perfil profissional:", error);
@@ -1401,8 +1392,9 @@ const DashboardUsuario = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const avatar = await resizeImage(file, 500, 0.85);
-      setProfileAvatar(avatar);
+      const resized = await resizeImage(file, 500, 0.85);
+      const url = await uploadFile(dataUrlToBlob(resized), file.name);
+      setProfileAvatar(url);
     } catch (error) {
       console.error("Erro ao carregar avatar:", error);
       toast.error("Não foi possível carregar a foto.");

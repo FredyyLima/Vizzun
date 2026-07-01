@@ -14,75 +14,7 @@ import {
 } from "@/components/ui/pagination";
 import { SlidersHorizontal, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
-const mockProfessionals = [
-  {
-    id: "1",
-    name: "Carlos Silva",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
-    specialty: "Engenheiro Civil",
-    rating: 4.9,
-    reviewCount: 127,
-    location: "São Paulo, SP",
-    verified: true,
-    services: ["Construção", "Reformas", "Projetos Estruturais"],
-  },
-  {
-    id: "2",
-    name: "Ana Martins",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face",
-    specialty: "Arquiteta",
-    rating: 4.8,
-    reviewCount: 89,
-    location: "Rio de Janeiro, RJ",
-    verified: true,
-    services: ["Arquitetura", "Design de Interiores", "Paisagismo"],
-  },
-  {
-    id: "3",
-    name: "Roberto Costa",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face",
-    specialty: "Marceneiro",
-    rating: 4.7,
-    reviewCount: 65,
-    location: "Curitiba, PR",
-    verified: false,
-    services: ["Marcenaria", "Móveis sob Medida", "Restauração"],
-  },
-  {
-    id: "4",
-    name: "Fernanda Lima",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face",
-    specialty: "Designer de Interiores",
-    rating: 5.0,
-    reviewCount: 42,
-    location: "Belo Horizonte, MG",
-    verified: true,
-    services: ["Design de Interiores", "Decoração", "Consultoria"],
-  },
-  {
-    id: "5",
-    name: "João Pedro",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face",
-    specialty: "Mestre de Obras",
-    rating: 4.6,
-    reviewCount: 98,
-    location: "Salvador, BA",
-    verified: true,
-    services: ["Construção", "Reformas", "Acabamentos"],
-  },
-  {
-    id: "6",
-    name: "Marina Santos",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=face",
-    specialty: "Arquiteta Paisagista",
-    rating: 4.9,
-    reviewCount: 55,
-    location: "Porto Alegre, RS",
-    verified: true,
-    services: ["Paisagismo", "Projetos de Jardim", "Consultoria Verde"],
-  },
-];
+import { apiPath } from "@/lib/api";
 
 type StoredProfile = {
   id: string;
@@ -99,16 +31,13 @@ type StoredProfile = {
   reviews?: { id: string; author: string; rating: number; comment: string }[];
 };
 
-const profileStorageKey = "professional_profiles";
-
-const loadStoredProfiles = () => {
-  if (typeof window === "undefined") return [] as StoredProfile[];
-  const raw = localStorage.getItem(profileStorageKey);
-  if (!raw) return [] as StoredProfile[];
+const fetchProfessionals = async (): Promise<StoredProfile[]> => {
   try {
-    return JSON.parse(raw) as StoredProfile[];
+    const response = await fetch(apiPath("/api/professionals"));
+    if (!response.ok) return [];
+    return (await response.json()) as StoredProfile[];
   } catch {
-    return [] as StoredProfile[];
+    return [];
   }
 };
 
@@ -119,7 +48,7 @@ const Profissionais = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [pageSize, setPageSize] = useState(15);
   const [currentPage, setCurrentPage] = useState(1);
-  const [storedProfiles, setStoredProfiles] = useState<StoredProfile[]>(() => loadStoredProfiles());
+  const [storedProfiles, setStoredProfiles] = useState<StoredProfile[]>([]);
 
   const handleClearFilters = () => {
     setSelectedServices([]);
@@ -132,12 +61,12 @@ const Profissionais = () => {
   }, [searchTerm, selectedServices, selectedState, pageSize]);
 
   useEffect(() => {
-    const reload = () => setStoredProfiles(loadStoredProfiles());
-    window.addEventListener("storage", reload);
-    window.addEventListener("profiles:changed", reload as EventListener);
+    let active = true;
+    fetchProfessionals().then((items) => {
+      if (active) setStoredProfiles(items);
+    });
     return () => {
-      window.removeEventListener("storage", reload);
-      window.removeEventListener("profiles:changed", reload as EventListener);
+      active = false;
     };
   }, []);
 
@@ -155,9 +84,7 @@ const Profissionais = () => {
     const mappedStored = storedProfiles.map((profile) => ({
       id: profile.id,
       name: profile.name,
-      avatar:
-        profile.avatar ||
-        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face",
+      avatar: profile.avatar || "/placeholder.svg",
       specialty: profile.specialty || "Profissional",
       rating: profile.rating ?? 0,
       reviewCount: profile.reviewCount ?? 0,
@@ -166,9 +93,7 @@ const Profissionais = () => {
       services: profile.services ?? [],
     }));
 
-    const combined = [...mappedStored, ...mockProfessionals];
-
-    return combined.filter((professional) => {
+    return mappedStored.filter((professional) => {
       const matchesQuery = normalizedQuery
         ? [
             normalizeText(professional.name),

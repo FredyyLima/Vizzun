@@ -4,57 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Star, MapPin, CheckCircle } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-
-const mockProfessionals = [
-  {
-    id: "1",
-    name: "Carlos Silva",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
-    specialty: "Engenheiro Civil",
-    rating: 4.9,
-    reviewCount: 127,
-    location: "São Paulo, SP",
-    verified: true,
-    services: ["Construção", "Reformas", "Projetos Estruturais"],
-    cities: ["São Paulo, SP"],
-    reviews: [
-      {
-        id: "r1",
-        author: "Fernanda Lima",
-        rating: 5,
-        comment: "Excelente profissional, cumpriu prazos e entregou com qualidade.",
-      },
-    ],
-  },
-  {
-    id: "2",
-    name: "Ana Martins",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face",
-    specialty: "Arquiteta",
-    rating: 4.8,
-    reviewCount: 89,
-    location: "Rio de Janeiro, RJ",
-    verified: true,
-    services: ["Arquitetura", "Design de Interiores", "Paisagismo"],
-    cities: ["Rio de Janeiro, RJ"],
-    reviews: [],
-  },
-  {
-    id: "3",
-    name: "Roberto Costa",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face",
-    specialty: "Marceneiro",
-    rating: 4.7,
-    reviewCount: 65,
-    location: "Curitiba, PR",
-    verified: false,
-    services: ["Marcenaria", "Móveis sob Medida", "Restauração"],
-    cities: ["Curitiba, PR"],
-    reviews: [],
-  },
-];
+import { apiPath } from "@/lib/api";
 
 type StoredProfile = {
   id: string;
@@ -71,31 +23,31 @@ type StoredProfile = {
   reviews?: { id: string; author: string; rating: number; comment: string }[];
 };
 
-const profileStorageKey = "professional_profiles";
-
-const loadStoredProfiles = () => {
-  if (typeof window === "undefined") return [] as StoredProfile[];
-  const raw = localStorage.getItem(profileStorageKey);
-  if (!raw) return [] as StoredProfile[];
-  try {
-    return JSON.parse(raw) as StoredProfile[];
-  } catch {
-    return [] as StoredProfile[];
-  }
-};
-
 const ProfissionalDetalhe = () => {
   const { id } = useParams();
-  const profiles = useMemo(() => loadStoredProfiles(), []);
+  const [stored, setStored] = useState<StoredProfile | null>(null);
 
-  const profile = useMemo(() => {
-    if (!id) return null;
-    const stored = profiles.find((item) => item.id === id);
-    if (stored) {
-      return {
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    fetch(apiPath(`/api/professionals/${id}`))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((item) => {
+        if (active) setStored(item);
+      })
+      .catch(() => {
+        if (active) setStored(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  const profile = stored
+    ? {
         id: stored.id,
         name: stored.name,
-        avatar: stored.avatar || "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face",
+        avatar: stored.avatar || "/placeholder.svg",
         specialty: stored.specialty || "Profissional",
         bio: stored.bio || "",
         rating: stored.rating ?? 0,
@@ -105,10 +57,8 @@ const ProfissionalDetalhe = () => {
         services: stored.services ?? [],
         cities: stored.cities ?? (stored.location ? [stored.location] : []),
         reviews: stored.reviews ?? [],
-      };
-    }
-    return mockProfessionals.find((item) => item.id === id) ?? null;
-  }, [id, profiles]);
+      }
+    : null;
 
   if (!profile) {
     return (

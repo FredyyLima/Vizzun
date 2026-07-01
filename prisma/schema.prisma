@@ -17,6 +17,17 @@ enum PersonType {
   CNPJ
 }
 
+enum AnnouncementStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum DealStatus {
+  NONE
+  PENDING
+  CLOSED
+}
+
 model User {
   id               String     @id @default(cuid())
   role             UserRole
@@ -42,6 +53,134 @@ model User {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
+  announcements        Announcement[]
+  professionalProfile  ProfessionalProfile?
+
   @@index([role])
+}
+
+model Announcement {
+  id              String             @id @default(cuid())
+  ownerId         String
+  owner           User               @relation(fields: [ownerId], references: [id])
+  role            UserRole
+  title           String
+  category        String
+  description     String
+  city            String
+  state           String
+  budget          String
+  deadline        String?
+  status          AnnouncementStatus @default(ACTIVE)
+  dealStatus      DealStatus         @default(NONE)
+  proposals       Int                @default(0)
+  primaryImageUrl String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  attachments AnnouncementAttachment[]
+  chats       Chat[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model AnnouncementAttachment {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  name           String
+  type           String
+  url            String?
+  isPrimary      Boolean      @default(false)
+  position       Int          @default(0)
+
+  @@index([announcementId])
+}
+
+model Chat {
+  id                     String     @id @default(cuid())
+  announcementId         String
+  announcement           Announcement @relation(fields: [announcementId], references: [id])
+  ownerId                String
+  participantId          String
+  dealStatus             DealStatus @default(NONE)
+  pendingDealFrom        String?
+  closePendingFrom       String?
+  contractStatus         String?
+  ownerLastReadAt        DateTime?
+  participantLastReadAt  DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  messages Message[]
+
+  @@index([announcementId])
+  @@index([ownerId])
+  @@index([participantId])
+}
+
+model ProfessionalChat {
+  id                     String   @id @default(cuid())
+  professionalId         String
+  clientId               String
+  dealStatus             String   @default("open")
+  closePendingFrom       String?
+  professionalLastReadAt DateTime?
+  clientLastReadAt       DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  messages Message[]
+
+  @@index([professionalId])
+  @@index([clientId])
+}
+
+model Message {
+  id                 String            @id @default(cuid())
+  chatId             String?
+  chat               Chat?             @relation(fields: [chatId], references: [id])
+  professionalChatId String?
+  professionalChat   ProfessionalChat? @relation(fields: [professionalChatId], references: [id])
+  senderId           String
+  text               String?
+  kind               String            @default("text")
+  fileName           String?
+  fileUrl            String?
+  fileType           String?
+  createdAt          DateTime          @default(now())
+
+  @@index([chatId])
+  @@index([professionalChatId])
+}
+
+model ProfessionalProfile {
+  id          String   @id
+  user        User     @relation(fields: [id], references: [id])
+  avatar      String?
+  specialty   String?
+  bio         String?
+  services    String?
+  cities      String?
+  rating      Float    @default(0)
+  reviewCount Int      @default(0)
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reviews ProfessionalReview[]
+}
+
+model ProfessionalReview {
+  id             String              @id @default(cuid())
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id])
+  authorName     String
+  rating         Int
+  comment        String
+  createdAt      DateTime            @default(now())
+
+  @@index([professionalId])
 }
 

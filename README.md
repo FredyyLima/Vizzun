@@ -102,22 +102,33 @@ uploads/               Arquivos enviados pelos usuários (avatar, anexos de chat
 
 ## Deploy
 
-A imagem de produção é definida em `Dockerfile` e usa `npm start`
-(`start:server:deploy`), que executa, nesta ordem:
+O `Dockerfile` na raiz builda **apenas a API** (Node + Express + Prisma) — o frontend (`dist/`)
+não é servido por esse container e precisa ser hospedado separadamente (ex.: um serviço de
+static hosting), apontando `VITE_API_BASE_URL` para a URL pública da API. Essa separação é o
+motivo de `VITE_API_BASE_URL` existir: em dev fica vazio (usa o proxy do Vite), em produção deve
+apontar para a API publicada.
+
+O container roda `npm start` (`start:server:deploy`), que executa, nesta ordem:
 
 1. Normaliza o histórico de migrations (`scripts/normalize-migrations.cjs`) — necessário apenas
    para compatibilizar bancos que já existiam antes da adoção do Prisma Migrate.
 2. `prisma generate` — gera o client do Prisma.
 3. `prisma migrate deploy` — aplica migrations pendentes de forma segura e idempotente (não
    recria dados existentes; se uma migration já foi marcada como aplicada, ela é ignorada).
-4. Inicia a API Express, que também serve os arquivos estáticos gerados pelo build do frontend.
+4. Inicia a API Express.
+
+O `Dockerfile` instala todas as dependências (`npm ci`, incluindo devDependencies) porque a CLI
+do Prisma (`prisma`) — necessária para `generate`/`migrate deploy` no passo acima — está
+declarada como devDependency. Não trocar para `npm ci --omit=dev` sem antes mover `prisma` para
+`dependencies` ou migrar para um build multi-stage, senão o container quebra ao subir.
 
 Antes de subir em produção:
 
 - Defina todas as variáveis de `.env.example` no ambiente de destino (nunca copie o `.env` de
   desenvolvimento).
 - Gere um `JWT_SECRET` novo e exclusivo do ambiente de produção.
-- Rode `npm run build` para gerar `dist/` (ou deixe o pipeline de deploy fazer isso).
+- Publique o frontend (`npm run build` gera `dist/`) em um static host separado e configure
+  `VITE_API_BASE_URL` com a URL pública da API antes de buildar.
 - Garanta que o volume/diretório `uploads/` seja persistente entre deploys, já que arquivos
   enviados pelos usuários são salvos em disco local pela API.
 - Atualize o domínio de exemplo (`https://www.vizzun.com.br`) em `public/sitemap.xml` e

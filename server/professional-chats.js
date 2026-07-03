@@ -195,9 +195,6 @@ export const createProfessionalChatsRouter = ({ prisma, requireAuth }) => {
             where: { id: chat.id },
             data: { dealStatus: "closed", closePendingFrom: null },
           });
-          await tx.professionalChat.create({
-            data: { professionalId: chat.professionalId, clientId: chat.clientId },
-          });
         });
       } else {
         await prisma.$transaction([

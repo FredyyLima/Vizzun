@@ -187,15 +187,6 @@ export const createChatsRouter = ({ prisma, requireAuth }) => {
   const appendSystemMessage = (tx, chatId, senderId, text) =>
     tx.message.create({ data: { chatId, senderId, text, kind: "text" } });
 
-  const spawnFollowUpChat = (tx, chat) =>
-    tx.chat.create({
-      data: {
-        announcementId: chat.announcementId,
-        ownerId: chat.ownerId,
-        participantId: chat.participantId,
-      },
-    });
-
   router.post("/chats/:id/deal", requireAuth, async (req, res) => {
     const parsed = dealActionSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -232,7 +223,6 @@ export const createChatsRouter = ({ prisma, requireAuth }) => {
             where: { id: chat.id },
             data: { dealStatus: "CLOSED", pendingDealFrom: null, closePendingFrom: null },
           });
-          await spawnFollowUpChat(tx, chat);
           await tx.announcement.update({ where: { id: chat.announcementId }, data: { dealStatus: "CLOSED" } });
         });
       } else {
@@ -298,7 +288,6 @@ export const createChatsRouter = ({ prisma, requireAuth }) => {
             where: { id: chat.id },
             data: { dealStatus: "CLOSED", closePendingFrom: null, pendingDealFrom: null },
           });
-          await spawnFollowUpChat(tx, chat);
           await tx.announcement.update({ where: { id: chat.announcementId }, data: { dealStatus: "CLOSED" } });
         });
       } else {

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCnpj } from "@/lib/dashboard-formatters";
+import { maskCpf, maskPhone, maskRg } from "@/lib/masks";
 import type { useDashboardConfig } from "@/hooks/use-dashboard-config";
 
 type ConfigSectionProps = {
@@ -86,7 +87,7 @@ const ConfigSection = ({ configState }: ConfigSectionProps) => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">CPF</label>
-                    <Input value={configProfile?.cpf ?? ""} disabled />
+                    <Input value={maskCpf(configProfile?.cpf ?? "")} disabled />
                   </div>
                 </div>
 
@@ -101,7 +102,11 @@ const ConfigSection = ({ configState }: ConfigSectionProps) => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">RG</label>
-                    <Input value={configRg} onChange={(e) => setConfigRg(e.target.value)} placeholder="00.000.000-0" />
+                    <Input
+                      value={configRg}
+                      onChange={(e) => setConfigRg(maskRg(e.target.value))}
+                      placeholder="00.000.000-0"
+                    />
                   </div>
                 </div>
               </>
@@ -110,7 +115,11 @@ const ConfigSection = ({ configState }: ConfigSectionProps) => {
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Telefone</label>
-                <Input value={configPhone} onChange={(e) => setConfigPhone(e.target.value)} placeholder="(00) 00000-0000" />
+                <Input
+                  value={configPhone}
+                  onChange={(e) => setConfigPhone(maskPhone(e.target.value))}
+                  placeholder="(00) 00000-0000"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Email</label>
@@ -152,17 +161,29 @@ const ConfigSection = ({ configState }: ConfigSectionProps) => {
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">Telefone do responsável</label>
-                      <Input value={configContactPhone} onChange={(e) => setConfigContactPhone(e.target.value)} />
+                      <Input
+                        value={configContactPhone}
+                        onChange={(e) => setConfigContactPhone(maskPhone(e.target.value))}
+                        placeholder="(00) 00000-0000"
+                      />
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">CPF do responsável</label>
-                      <Input value={configContactCpf} onChange={(e) => setConfigContactCpf(e.target.value)} placeholder="000.000.000-00" />
+                      <Input
+                        value={configContactCpf}
+                        onChange={(e) => setConfigContactCpf(maskCpf(e.target.value))}
+                        placeholder="000.000.000-00"
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">RG do responsável</label>
-                      <Input value={configContactRg} onChange={(e) => setConfigContactRg(e.target.value)} placeholder="00.000.000-0" />
+                      <Input
+                        value={configContactRg}
+                        onChange={(e) => setConfigContactRg(maskRg(e.target.value))}
+                        placeholder="00.000.000-0"
+                      />
                     </div>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-4">

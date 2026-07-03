@@ -1,4 +1,5 @@
 import { sanitizeDisplayName } from "@/lib/user";
+import { maskCnpj } from "@/lib/masks";
 import type { ChatMessage, ChatSummary, StoredChat, StoredProfessionalChat } from "@/lib/dashboard-types";
 
 export const brazilStates = [
@@ -140,18 +141,5 @@ export const formatCurrency = (value: string) => {
 };
 
 export const formatCnpj = (value?: string | null) => {
-  if (!value) return "";
-  const digits = value.replace(/\D/g, "").slice(0, 14);
-  const parts = [
-    digits.slice(0, 2),
-    digits.slice(2, 5),
-    digits.slice(5, 8),
-    digits.slice(8, 12),
-    digits.slice(12, 14),
-  ];
-  if (digits.length <= 2) return parts[0];
-  if (digits.length <= 5) return `${parts[0]}.${parts[1]}`;
-  if (digits.length <= 8) return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  if (digits.length <= 12) return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}`;
-  return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}-${parts[4]}`;
+  return maskCnpj(value);
 };

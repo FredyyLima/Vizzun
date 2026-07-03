@@ -23,6 +23,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isStrongPassword, isValidCNPJ, isValidCPF, isValidPhone } from "@/lib/validators";
+import { maskCnpj, maskCpf, maskPhone, maskRg } from "@/lib/masks";
 import { apiPath } from "@/lib/api";
 import { Link } from "react-router-dom";
 import SeoHead from "@/components/SeoHead";
@@ -42,22 +43,6 @@ const services = [
 const isValidDate = (value?: string) => {
   if (!value) return false;
   return !Number.isNaN(Date.parse(value));
-};
-
-const formatCnpj = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 14);
-  const parts = [
-    digits.slice(0, 2),
-    digits.slice(2, 5),
-    digits.slice(5, 8),
-    digits.slice(8, 12),
-    digits.slice(12, 14),
-  ];
-  if (digits.length <= 2) return parts[0];
-  if (digits.length <= 5) return `${parts[0]}.${parts[1]}`;
-  if (digits.length <= 8) return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  if (digits.length <= 12) return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}`;
-  return `${parts[0]}.${parts[1]}.${parts[2]}/${parts[3]}-${parts[4]}`;
 };
 
 const cadastroSchema = z
@@ -382,7 +367,12 @@ const Cadastro = () => {
                               <div className="relative">
                                 <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <FormControl>
-                                  <Input {...field} placeholder="000.000.000-00" className="pl-10 h-12" />
+                                  <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskCpf(event.target.value))}
+                                    placeholder="000.000.000-00"
+                                    className="pl-10 h-12"
+                                  />
                                 </FormControl>
                               </div>
                               <FormMessage />
@@ -398,7 +388,12 @@ const Cadastro = () => {
                               <div className="relative">
                                 <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <FormControl>
-                                  <Input {...field} placeholder="00.000.000-0" className="pl-10 h-12" />
+                                  <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskRg(event.target.value))}
+                                    placeholder="00.000.000-0"
+                                    className="pl-10 h-12"
+                                  />
                                 </FormControl>
                               </div>
                               <FormMessage />
@@ -416,7 +411,12 @@ const Cadastro = () => {
                             <div className="relative">
                               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                               <FormControl>
-                                <Input {...field} placeholder="(00) 00000-0000" className="pl-10 h-12" />
+                                <Input
+                                {...field}
+                                onChange={(event) => field.onChange(maskPhone(event.target.value))}
+                                placeholder="(00) 00000-0000"
+                                className="pl-10 h-12"
+                              />
                               </FormControl>
                             </div>
                             <FormMessage />
@@ -545,7 +545,7 @@ const Cadastro = () => {
                                           {...field}
                                           placeholder="00.000.000/0000-00"
                                           className="pl-10 h-12"
-                                          onChange={(event) => field.onChange(formatCnpj(event.target.value))}
+                                          onChange={(event) => field.onChange(maskCnpj(event.target.value))}
                                         />
                                       </FormControl>
                                     </div>
@@ -670,7 +670,12 @@ const Cadastro = () => {
                                     <div className="relative">
                                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                       <FormControl>
-                                        <Input {...field} placeholder="(00) 00000-0000" className="pl-10 h-12" />
+                                        <Input
+                                {...field}
+                                onChange={(event) => field.onChange(maskPhone(event.target.value))}
+                                placeholder="(00) 00000-0000"
+                                className="pl-10 h-12"
+                              />
                                       </FormControl>
                                     </div>
                                     <FormMessage />
@@ -688,7 +693,12 @@ const Cadastro = () => {
                                     <div className="relative">
                                       <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                       <FormControl>
-                                        <Input {...field} placeholder="000.000.000-00" className="pl-10 h-12" />
+                                        <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskCpf(event.target.value))}
+                                    placeholder="000.000.000-00"
+                                    className="pl-10 h-12"
+                                  />
                                       </FormControl>
                                     </div>
                                     <FormMessage />
@@ -704,7 +714,12 @@ const Cadastro = () => {
                                     <div className="relative">
                                       <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                       <FormControl>
-                                        <Input {...field} placeholder="00.000.000-0" className="pl-10 h-12" />
+                                        <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskRg(event.target.value))}
+                                    placeholder="00.000.000-0"
+                                    className="pl-10 h-12"
+                                  />
                                       </FormControl>
                                     </div>
                                     <FormMessage />
@@ -795,7 +810,12 @@ const Cadastro = () => {
                                   <div className="relative">
                                     <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <FormControl>
-                                      <Input {...field} placeholder="000.000.000-00" className="pl-10 h-12" />
+                                      <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskCpf(event.target.value))}
+                                    placeholder="000.000.000-00"
+                                    className="pl-10 h-12"
+                                  />
                                     </FormControl>
                                   </div>
                                   <FormMessage />
@@ -811,7 +831,12 @@ const Cadastro = () => {
                                   <div className="relative">
                                     <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <FormControl>
-                                      <Input {...field} placeholder="00.000.000-0" className="pl-10 h-12" />
+                                      <Input
+                                    {...field}
+                                    onChange={(event) => field.onChange(maskRg(event.target.value))}
+                                    placeholder="00.000.000-0"
+                                    className="pl-10 h-12"
+                                  />
                                     </FormControl>
                                   </div>
                                   <FormMessage />
@@ -829,7 +854,12 @@ const Cadastro = () => {
                                 <div className="relative">
                                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                   <FormControl>
-                                    <Input {...field} placeholder="(00) 00000-0000" className="pl-10 h-12" />
+                                    <Input
+                                {...field}
+                                onChange={(event) => field.onChange(maskPhone(event.target.value))}
+                                placeholder="(00) 00000-0000"
+                                className="pl-10 h-12"
+                              />
                                   </FormControl>
                                 </div>
                                 <FormMessage />
